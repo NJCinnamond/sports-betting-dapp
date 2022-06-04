@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: MIT
-pragma solidity ^0.8.7;
+pragma solidity ^0.8.12;
 
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
 import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
@@ -13,8 +13,11 @@ import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
  * THIS IS AN EXAMPLE CONTRACT WHICH USES HARDCODED VALUES FOR CLARITY.
  * PLEASE DO NOT USE THIS CODE IN PRODUCTION.
  */
-contract MultiWordConsumer is ChainlinkClient, ConfirmedOwner {
+abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
     using Chainlink for Chainlink.Request;
+
+    address public chainlink;
+    string public sportsOracleURI;
 
     bytes32 private jobId;
     uint256 private fee;
@@ -22,10 +25,12 @@ contract MultiWordConsumer is ChainlinkClient, ConfirmedOwner {
     // multiple params returned in a single oracle response
     string public fixtureResult;
 
+    event RequestedFixtureResult(bytes32 indexed requestId, string fixtureID);
+
     event RequestFixtureResultFulfilled(
         bytes32 indexed requestId,
-        uint256 fixtureID,
-        string fixtureResult,
+        string fixtureID,
+        string fixtureResult
     );
 
     /**
@@ -39,26 +44,49 @@ contract MultiWordConsumer is ChainlinkClient, ConfirmedOwner {
      * jobId: 53f9755920cd451a8fe46f5087468395
      *
      */
-    constructor() ConfirmedOwner(msg.sender) {
-        setChainlinkToken(0xa36085F69e2889c224210F603D836748e7dC0088);
-        setChainlinkOracle(0x74EcC8Bdeb76F2C6760eD2dc8A46ca5e581fA656);
+    constructor(
+        string memory _sportsOracleURI,
+        address _chainlink,
+        address _link,
+        uint256 _fee,
+    ) ConfirmedOwner(msg.sender) {
+        chainlink = _chainlink;
+        sportsOracleURI = _sportsOracleURI;
+        setChainlinkToken(_chainlink);
+        setChainlinkOracle(_link);
         jobId = "53f9755920cd451a8fe46f5087468395";
-        fee = (1 * LINK_DIVISIBILITY) / 10; // 0,1 * 10**18 (Varies by network and job)
+        fee = _fee;
     }
 
     /**
      * @notice Request mutiple parameters from the oracle in a single transaction
      */
-    function requestMultipleParameters(uint256 fixtureID) public {
+    function requestMultipleParameters(string memory fixtureID)
+        public
+        returns (bytes32)
+    {
         Chainlink.Request memory req = buildChainlinkRequest(
             jobId,
             address(this),
-            this.fulfillMultipleParameters.selector
+            this.rawFulfillMultipleParameters.selector
         );
-        req.add("urlResult", "http://127.0.0.1:5000/premier-league/fixtures/" + string(fixtureID));
+        req.add("urlResult", string.concat(sportsOracleURI, fixtureID));
         req.add("pathResult", "Result");
-        sendChainlinkRequest(req, fee); // MWR API.
+        return sendChainlinkRequest(req, fee); // MWR API.
     }
+
+    function rawFulfillMultipleParameters(
+        bytes32 _requestId,
+        string memory _resultResponse
+    ) external {
+        require(msg.sender == chainlink, "Only ChainlinkClient can fulfill");
+        fulfillMultipleParameters(_requestId, _resultResponse);
+    }
+
+    function fulfillMultipleParameters(
+        bytes32 _requestId,
+        string memory _resultResponse
+    ) internal virtual;
 
     /**
      * Allow withdraw of Link tokens from the contract
