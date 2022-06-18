@@ -25,12 +25,16 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
     // multiple params returned in a single oracle response
     string public fixtureResult;
 
-    event RequestedFixtureResult(bytes32 indexed requestId, string fixtureID);
+    event RequestedFixtureParameters(
+        bytes32 indexed requestId,
+        string fixtureID
+    );
 
-    event RequestFixtureResultFulfilled(
+    event RequestFixtureParametersFulfilled(
         bytes32 indexed requestId,
         string fixtureID,
-        string fixtureResult
+        string fixtureResult,
+        uint256 kickoff
     );
 
     /**
@@ -48,13 +52,14 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
         string memory _sportsOracleURI,
         address _chainlink,
         address _link,
-        uint256 _fee,
+        bytes32 _jobId,
+        uint256 _fee
     ) ConfirmedOwner(msg.sender) {
         chainlink = _chainlink;
         sportsOracleURI = _sportsOracleURI;
         setChainlinkToken(_chainlink);
         setChainlinkOracle(_link);
-        jobId = "53f9755920cd451a8fe46f5087468395";
+        jobId = _jobId;
         fee = _fee;
     }
 
@@ -72,20 +77,27 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
         );
         req.add("urlResult", string.concat(sportsOracleURI, fixtureID));
         req.add("pathResult", "Result");
+        req.add("pathKickoff", "Kickoff");
         return sendChainlinkRequest(req, fee); // MWR API.
     }
 
     function rawFulfillMultipleParameters(
         bytes32 _requestId,
-        string memory _resultResponse
+        string memory _resultResponse,
+        uint256 _kickoffResponse
     ) external {
         require(msg.sender == chainlink, "Only ChainlinkClient can fulfill");
-        fulfillMultipleParameters(_requestId, _resultResponse);
+        fulfillMultipleParameters(
+            _requestId,
+            _resultResponse,
+            _kickoffResponse
+        );
     }
 
     function fulfillMultipleParameters(
         bytes32 _requestId,
-        string memory _resultResponse
+        string memory _resultResponse,
+        uint256 _kickoffResponse
     ) internal virtual;
 
     /**
