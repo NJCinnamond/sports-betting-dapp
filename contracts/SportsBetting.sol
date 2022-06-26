@@ -34,7 +34,11 @@ contract SportsBetting is SportsOracleConsumer {
         BetType betType
     );
 
+    event BetPayout(address indexed better, string fixtureID, uint256 amount);
+
     event KickoffTimeUpdated(string fixtureID, uint256 kickoffTime);
+
+    BetType[] public betTypes;
 
     // Entrance fee of 0.0001 Eth (10^14 Wei)
     uint256 public entranceFee = 10**14;
@@ -43,9 +47,22 @@ contract SportsBetting is SportsOracleConsumer {
     // i.e. all bets must be placed at time t where t < koTime - betCutOffTime
     uint256 betCutOffTime = 60 * 60;
 
+    // Map each fixture ID to a map of BetType to an array of all addresses that have ever placed
+    // bets for that fixture-result pair
+    mapping(string => mapping(BetType => address[])) public historicalBetters;
+
+    // activeBetters represents all addresses who currently have an amount staked on a fixture-result
+    // The mapping(address => bool) pattern allows us to set address to true or false if an address
+    // stakes/unstakes for that bet, and allows safer 'contains' methods on the betters
+    mapping(string => mapping(BetType => mapping(address => bool)))
+        public activeBetters;
+
     // Map each fixture ID to a map of BetType to a map of address to uint representing the amount of wei bet on that result
     mapping(string => mapping(BetType => mapping(address => uint256)))
         public amounts;
+
+    // Map each fixture ID to a map of address to amount we owe the address owner
+    mapping(string => mapping(address => uint256)) obligations;
 
     // Map each fixture ID to whether betting is open for this fixture
     mapping(string => BettingState) public bettingState;
@@ -67,6 +84,9 @@ contract SportsBetting is SportsOracleConsumer {
             "Deploying a SportsBetting with sports oracle URI:",
             _sportsOracleURI
         );
+        betTypes[0] = BetType.HOME;
+        betTypes[1] = BetType.DRAW;
+        betTypes[2] = BetType.AWAY;
     }
 
     // openBetForFixture makes an API call to oracle. It is expected that this
@@ -154,6 +174,8 @@ contract SportsBetting is SportsOracleConsumer {
         );
         require(msg.value >= entranceFee, "Amount is below minimum.");
         amounts[fixtureID][betType][msg.sender] += msg.value;
+        historicalBetters[fixtureID][betType].push(msg.sender);
+        activeBetters[fixtureID][betType][msg.sender] = true;
         emit BetStaked(msg.sender, fixtureID, msg.value, betType);
     }
 
@@ -168,6 +190,7 @@ contract SportsBetting is SportsOracleConsumer {
         require(amountToUnstake > 0, "No stake on this address-result.");
 
         amounts[fixtureID][betType][msg.sender] = 0;
+        activeBetters[fixtureID][betType][msg.sender] = false;
         payable(msg.sender).transfer(amountToUnstake);
         emit BetUnstaked(msg.sender, fixtureID, betType);
     }
@@ -221,8 +244,121 @@ contract SportsBetting is SportsOracleConsumer {
         string memory fixtureID,
         string memory _resultResponse
     ) private {
-        // whole bunch of logic to do payouts
+        BetType result = getFixtureResultFromAPIResponse(_resultResponse);
+
+        BetType[] memory winningOutcomes;
+        winningOutcomes[0] = result;
+
+        BetType[] memory losingOutcomes = getLosingFixtureOutcomes(result);
+
+        uint256 winningAmount = getTotalAmountBetOnFixtureOutcomes(
+            fixtureID,
+            winningOutcomes
+        );
+        uint256 losingAmount = getTotalAmountBetOnFixtureOutcomes(
+            fixtureID,
+            losingOutcomes
+        );
+        uint256 totalAmount = winningAmount + losingAmount;
+
+        // Now we set the obligations map entry for this fixture based on above calcs and
+        // perform the payout
+        fulfillFixturePayoutObligations(
+            fixtureID,
+            result,
+            winningAmount,
+            totalAmount
+        );
+
         bettingState[fixtureID] = BettingState.FULFILLED;
         emit BettingStateChanged(fixtureID, BettingState.FULFILLED);
+    }
+
+    function getFixtureResultFromAPIResponse(string memory _resultResponse)
+        private
+        returns (BetType)
+    {
+        if (strEqual(_resultResponse, "HOME")) {
+            return BetType.HOME;
+        } else if (strEqual(_resultResponse, "DRAW")) {
+            return BetType.DRAW;
+        } else if (strEqual(_resultResponse, "AWAY")) {
+            return BetType.AWAY;
+        }
+        revert("Unexpected API Fixture result");
+    }
+
+    function strEqual(string memory a, string memory b) private returns (bool) {
+        return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
+    }
+
+    function getLosingFixtureOutcomes(BetType outcome)
+        private
+        returns (BetType[] memory)
+    {
+        BetType[] memory losingOutcomes;
+        for (uint256 i = 0; i <= betTypes.length; i++) {
+            if (betTypes[i] != outcome) {
+                losingOutcomes.push(betTypes[i]);
+            }
+        }
+        return losingOutcomes;
+    }
+
+    function getTotalAmountBetOnFixtureOutcomes(
+        string memory fixtureID,
+        BetType[] memory outcomes
+    ) private returns (uint256) {
+        uint256 amount;
+        for (uint256 i = 0; i < outcomes.length; i++) {
+            amount += getTotalAmountBetOnFixtureOutcome(fixtureID, outcomes[i]);
+        }
+        return amount;
+    }
+
+    function getTotalAmountBetOnFixtureOutcome(
+        string memory fixtureID,
+        BetType outcome
+    ) private returns (uint256) {
+        uint256 amount;
+        for (
+            uint256 i = 0;
+            i < historicalBetters[fixtureID][outcome].length;
+            i++
+        ) {
+            address better = historicalBetters[fixtureID][outcome][i];
+            if (activeBetters[fixtureID][outcome][better]) {
+                amount += amounts[fixtureID][outcome][better];
+            }
+        }
+        return amount;
+    }
+
+    // fulfillFixturePayoutObligations calculates the obligations (amount we owe to each
+    // winning staker for this fixture)
+    function fulfillFixturePayoutObligations(
+        string memory fixtureID,
+        BetType result,
+        uint256 winningAmount,
+        uint256 totalAmount
+    ) private {
+        for (
+            uint256 i = 0;
+            i < historicalBetters[fixtureID][result].length;
+            i++
+        ) {
+            address better = historicalBetters[fixtureID][result][i];
+            if (activeBetters[fixtureID][result][better]) {
+                uint256 betterAmount = amounts[fixtureID][result][better];
+                uint256 betterObligation = (betterAmount / winningAmount) *
+                    totalAmount;
+                obligations[fixtureID][better] = betterObligation;
+
+                amounts[fixtureID][result][better] = 0;
+                activeBetters[fixtureID][result][better] = false;
+                payable(msg.sender).transfer(betterObligation);
+                emit BetPayout(msg.sender, fixtureID, betterObligation);
+            }
+        }
     }
 }
