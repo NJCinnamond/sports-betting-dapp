@@ -16,6 +16,7 @@ contract SportsBetting is SportsOracleConsumer {
         CLOSED,
         OPEN,
         AWAITING,
+        FULFILLING,
         FULFILLED
     }
 
@@ -34,6 +35,8 @@ contract SportsBetting is SportsOracleConsumer {
         BetType betType
     );
 
+    event BetPayoutFulfillmentError(string fixtureID, string reason);
+
     event BetPayout(address indexed better, string fixtureID, uint256 amount);
 
     event KickoffTimeUpdated(string fixtureID, uint256 kickoffTime);
@@ -42,6 +45,11 @@ contract SportsBetting is SportsOracleConsumer {
 
     // Entrance fee of 0.0001 Eth (10^14 Wei)
     uint256 public entranceFee = 10**14;
+
+    // Max time before a fixture kick-off that a bet can be placed in seconds
+    // A fixture bet state will not move to OPEN before a time to the left of the
+    // ko time equal to betAdvanceTime
+    uint256 betAdvanceTime = 7 * 24 * 60 * 60;
 
     // Cut off time for bets before KO time in seconds
     // i.e. all bets must be placed at time t where t < koTime - betCutOffTime
@@ -89,12 +97,20 @@ contract SportsBetting is SportsOracleConsumer {
         betTypes[2] = BetType.AWAY;
     }
 
+    // Wrapper for setting fixture betting state and emitting event
+    function setFixtureBettingState(string memory fixtureID, BettingState state)
+        private
+    {
+        bettingState[fixtureID] = state;
+        emit BettingStateChanged(fixtureID, state);
+    }
+
     // openBetForFixture makes an API call to oracle. It is expected that this
     // call will return the kickoff_time and the fulfillMultipleParameters func
     // will handle the state change to open
     // This is to ensure we don't open a bet until we have it's KO time and
     // know that it advanced enough in the future
-    function openBetForFixture(string memory fixtureID) public onlyOwner {
+    function openBetForFixture(string memory fixtureID) public {
         require(
             bettingState[fixtureID] != BettingState.OPEN,
             "Bet state is already OPEN for this fixture."
@@ -107,27 +123,29 @@ contract SportsBetting is SportsOracleConsumer {
             bettingState[fixtureID] != BettingState.CLOSED,
             "Bet state is already CLOSED for this fixture."
         );
-        bettingState[fixtureID] = BettingState.CLOSED;
-        emit BettingStateChanged(fixtureID, BettingState.CLOSED);
+        setFixtureBettingState(fixtureID, BettingState.CLOSED);
     }
 
     // Because the betting state transition OPEN -> AWAITING depends on
     // real-world time, we cannot simply rely on ctx state variables to
-    // deduce if a contract remains open
+    // deduce if a fixture-bet remains open
     // In this function we deduce whether betting is open based on current
     // block timestamp, update the state accordingly, and return the result
     function shouldHaveCorrectBettingState(string memory fixtureID) private {
         uint256 ko = fixtureToKickoffTime[fixtureID];
 
+        if (ko == 0) return;
+
         // If a bet is CLOSED, it can be OPENed if the kickoff time is
         // present and current timestamp is more than betCutOffTime before it
+        // less than the betAdvanceTime after it
         if (
             bettingState[fixtureID] == BettingState.CLOSED &&
             block.timestamp <= ko - betCutOffTime &&
+            block.timestamp >= ko - betAdvanceTime &&
             betCutOffTime != 0
         ) {
-            bettingState[fixtureID] = BettingState.OPEN;
-            emit BettingStateChanged(fixtureID, BettingState.OPEN);
+            setFixtureBettingState(fixtureID, BettingState.OPEN);
         }
 
         // If a bet is OPEN, it becomes AWAITING if the kickoff time is
@@ -138,8 +156,7 @@ contract SportsBetting is SportsOracleConsumer {
             block.timestamp > ko - betCutOffTime &&
             betCutOffTime != 0
         ) {
-            bettingState[fixtureID] = BettingState.AWAITING;
-            emit BettingStateChanged(fixtureID, BettingState.AWAITING);
+            setFixtureBettingState(fixtureID, BettingState.AWAITING);
         }
     }
 
@@ -154,14 +171,13 @@ contract SportsBetting is SportsOracleConsumer {
             bettingState[fixtureID] != BettingState.AWAITING,
             "Bet state is already AWAITING for this fixture."
         );
-        bettingState[fixtureID] = BettingState.AWAITING;
-        emit BettingStateChanged(fixtureID, BettingState.AWAITING);
+        setFixtureBettingState(fixtureID, BettingState.AWAITING);
     }
 
     function fulfillBetForFixture(string memory fixtureID) public {
         require(
-            bettingState[fixtureID] != BettingState.FULFILLED,
-            "Bet state is already FULFILLED for this fixture."
+            bettingState[fixtureID] != BettingState.AWAITING,
+            "Bet state must be AWAITING to request fulfillment."
         );
         requestFixtureParameters(fixtureID);
     }
@@ -226,7 +242,9 @@ contract SportsBetting is SportsOracleConsumer {
             bettingState[fixtureID] == BettingState.AWAITING &&
             bytes(_resultResponse).length > 0
         ) {
+            setFixtureBettingState(fixtureID, BettingState.FULFILLING);
             fulfillFixtureResult(fixtureID, _resultResponse);
+            setFixtureBettingState(fixtureID, BettingState.FULFILLED);
         }
     }
 
@@ -244,7 +262,10 @@ contract SportsBetting is SportsOracleConsumer {
         string memory fixtureID,
         string memory _resultResponse
     ) private {
-        BetType result = getFixtureResultFromAPIResponse(_resultResponse);
+        BetType result = getFixtureResultFromAPIResponse(
+            fixtureID,
+            _resultResponse
+        );
 
         BetType[] memory winningOutcomes;
         winningOutcomes[0] = result;
@@ -269,15 +290,12 @@ contract SportsBetting is SportsOracleConsumer {
             winningAmount,
             totalAmount
         );
-
-        bettingState[fixtureID] = BettingState.FULFILLED;
-        emit BettingStateChanged(fixtureID, BettingState.FULFILLED);
     }
 
-    function getFixtureResultFromAPIResponse(string memory _resultResponse)
-        private
-        returns (BetType)
-    {
+    function getFixtureResultFromAPIResponse(
+        string memory fixtureID,
+        string memory _resultResponse
+    ) private returns (BetType) {
         if (strEqual(_resultResponse, "HOME")) {
             return BetType.HOME;
         } else if (strEqual(_resultResponse, "DRAW")) {
@@ -285,7 +303,15 @@ contract SportsBetting is SportsOracleConsumer {
         } else if (strEqual(_resultResponse, "AWAY")) {
             return BetType.AWAY;
         }
-        revert("Unexpected API Fixture result");
+
+        string memory errorString = string.concat(
+            "Error on fixture ",
+            fixtureID,
+            ": Unknown result from API: ",
+            _resultResponse
+        );
+        emit BetPayoutFulfillmentError(fixtureID, errorString);
+        revert(errorString);
     }
 
     function strEqual(string memory a, string memory b) private returns (bool) {
@@ -297,9 +323,11 @@ contract SportsBetting is SportsOracleConsumer {
         returns (BetType[] memory)
     {
         BetType[] memory losingOutcomes;
+        uint256 losingOutcomesIndex = 0;
         for (uint256 i = 0; i <= betTypes.length; i++) {
             if (betTypes[i] != outcome) {
-                losingOutcomes.push(betTypes[i]);
+                losingOutcomes[losingOutcomesIndex] = betTypes[i];
+                losingOutcomesIndex++;
             }
         }
         return losingOutcomes;
@@ -342,6 +370,10 @@ contract SportsBetting is SportsOracleConsumer {
         uint256 winningAmount,
         uint256 totalAmount
     ) private {
+        if (bettingState[fixtureID] == BettingState.FULFILLING) {
+            revert("Fixture bet state is not FULFILLING");
+        }
+
         for (
             uint256 i = 0;
             i < historicalBetters[fixtureID][result].length;
