@@ -9,10 +9,6 @@ import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
  * Find information on LINK Token Contracts and get the latest ETH and LINK faucets here: https://docs.chain.link/docs/link-token-contracts/
  */
 
-/**
- * THIS IS AN EXAMPLE CONTRACT WHICH USES HARDCODED VALUES FOR CLARITY.
- * PLEASE DO NOT USE THIS CODE IN PRODUCTION.
- */
 abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
     using Chainlink for Chainlink.Request;
 
@@ -50,15 +46,15 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
      */
     constructor(
         string memory _sportsOracleURI,
-        address _chainlink,
+        address _oracle,
         address _link,
         bytes32 _jobId,
         uint256 _fee
     ) ConfirmedOwner(msg.sender) {
-        chainlink = _chainlink;
         sportsOracleURI = _sportsOracleURI;
-        setChainlinkToken(_chainlink);
-        setChainlinkOracle(_link);
+        setChainlinkToken(_link);
+        setChainlinkOracle(_oracle);
+        chainlink = _oracle;
         jobId = _jobId;
         fee = _fee;
     }
