@@ -32,6 +32,7 @@ contract SportsBetting is SportsOracleConsumer {
     event BetUnstaked(
         address indexed better,
         string fixtureID,
+        uint256 amount,
         BetType betType
     );
 
@@ -188,7 +189,7 @@ contract SportsBetting is SportsOracleConsumer {
             bettingState[fixtureID] == BettingState.OPEN,
             "Bet activity is not open for this fixture."
         );
-        require(msg.value >= entranceFee, "Amount is below minimum.");
+        require(msg.value >= entranceFee, "Amount is below entrance fee.");
         amounts[fixtureID][betType][msg.sender] += msg.value;
         historicalBetters[fixtureID][betType].push(msg.sender);
         activeBetters[fixtureID][betType][msg.sender] = true;
@@ -208,7 +209,7 @@ contract SportsBetting is SportsOracleConsumer {
         amounts[fixtureID][betType][msg.sender] = 0;
         activeBetters[fixtureID][betType][msg.sender] = false;
         payable(msg.sender).transfer(amountToUnstake);
-        emit BetUnstaked(msg.sender, fixtureID, betType);
+        emit BetUnstaked(msg.sender, fixtureID, amountToUnstake, betType);
     }
 
     function requestFixtureParameters(string memory fixtureID) internal {
