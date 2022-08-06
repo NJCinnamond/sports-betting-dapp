@@ -323,12 +323,13 @@ contract SportsBetting is SportsOracleConsumer {
         internal
         returns (BetType[] memory)
     {
-        BetType[] memory losingOutcomes;
+        BetType[] memory losingOutcomes = new BetType[](2);
+
         uint256 losingOutcomesIndex = 0;
-        for (uint256 i = 0; i <= betTypes.length; i++) {
+        for (uint256 i = 0; i < betTypes.length; i++) {
             if (betTypes[i] != outcome) {
                 losingOutcomes[losingOutcomesIndex] = betTypes[i];
-                losingOutcomesIndex++;
+                losingOutcomesIndex += 1;
             }
         }
         return losingOutcomes;

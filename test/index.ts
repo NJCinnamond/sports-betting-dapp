@@ -366,7 +366,7 @@ describe("Sports Betting contract", function () {
 
   describe("fulfillKickoffTime", function () {
     it("Should correctly set kickoff time", async function () {
-      const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -379,9 +379,54 @@ describe("Sports Betting contract", function () {
     });
   });
 
+  describe("getLosingFixtureOutcomes", function () {
+    it("Should correctly get losing fixture outcomes on HOME", async function () {
+      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
+
+      const outcome = betTypeHome;
+      const expected = [betTypeDraw, betTypeAway];
+
+      // ACT & ASSERT
+      expect(await SportsBetting.callStatic.getLosingFixtureOutcomesTest(outcome))
+        .to.deep.equal(expected);
+    });
+
+    it("Should correctly get losing fixture outcomes on DRAW", async function () {
+      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
+
+      const outcome = betTypeDraw;
+      const expected = [betTypeHome, betTypeAway];
+
+      // ACT & ASSERT
+      expect(await SportsBetting.callStatic.getLosingFixtureOutcomesTest(outcome))
+        .to.deep.equal(expected);
+    });
+
+    it("Should correctly get losing fixture outcomes on AWAY", async function () {
+      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
+
+      const outcome = betTypeAway;
+      const expected = [betTypeHome, betTypeDraw];
+
+      // ACT & ASSERT
+      expect(await SportsBetting.callStatic.getLosingFixtureOutcomesTest(outcome))
+        .to.deep.equal(expected);
+    });
+
+    it("Should revert if invalid outcome", async function () {
+      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
+
+      const outcome = 100; // Invalid enum
+
+      // ACT & ASSERT
+      await expect(SportsBetting.callStatic.getLosingFixtureOutcomesTest(outcome))
+        .to.be.reverted;
+    });
+  });
+
   describe("fulfillFixturePayoutObligations", function () {
     it("Should revert if fixture bet state is not FULFILLING", async function () {
-      const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
       const dummyFixtureID = '1234';

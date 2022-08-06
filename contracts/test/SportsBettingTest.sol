@@ -44,4 +44,11 @@ contract SportsBettingTest is SportsBetting {
             totalAmount
         );
     }
+
+    function getLosingFixtureOutcomesTest(BetType outcome)
+        public
+        returns (BetType[] memory)
+    {
+        return getLosingFixtureOutcomes(outcome);
+    }
 }
