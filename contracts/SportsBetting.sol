@@ -371,8 +371,8 @@ contract SportsBetting is SportsOracleConsumer {
         uint256 winningAmount,
         uint256 totalAmount
     ) internal {
-        if (bettingState[fixtureID] == BettingState.FULFILLING) {
-            revert("Fixture bet state is not FULFILLING");
+        if (bettingState[fixtureID] != BettingState.FULFILLING) {
+            revert("Fixture bet state is not FULFILLING.");
         }
 
         for (
@@ -383,14 +383,14 @@ contract SportsBetting is SportsOracleConsumer {
             address better = historicalBetters[fixtureID][result][i];
             if (activeBetters[fixtureID][result][better]) {
                 uint256 betterAmount = amounts[fixtureID][result][better];
-                uint256 betterObligation = (betterAmount / winningAmount) *
-                    totalAmount;
+                uint256 betterObligation = betterAmount *
+                    (totalAmount / winningAmount);
                 obligations[fixtureID][better] = betterObligation;
 
                 amounts[fixtureID][result][better] = 0;
                 activeBetters[fixtureID][result][better] = false;
-                payable(msg.sender).transfer(betterObligation);
-                emit BetPayout(msg.sender, fixtureID, betterObligation);
+                payable(better).transfer(betterObligation);
+                emit BetPayout(better, fixtureID, betterObligation);
             }
         }
     }

@@ -30,4 +30,18 @@ contract SportsBettingTest is SportsBetting {
     ) public {
         fulfillKickoffTime(fixtureID, _kickoffResponse);
     }
+
+    function fulfillFixturePayoutObligationsTest(
+        string memory fixtureID,
+        BetType result,
+        uint256 winningAmount,
+        uint256 totalAmount
+    ) public {
+        fulfillFixturePayoutObligations(
+            fixtureID,
+            result,
+            winningAmount,
+            totalAmount
+        );
+    }
 }
