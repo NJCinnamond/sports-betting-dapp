@@ -25,7 +25,7 @@ describe("Sports Betting contract", function () {
 
     // Get the SportsBetting contract and Signers
     const SportsBettingFactory = await ethers.getContractFactory("SportsBettingTest");
-    const [owner, addr1, addr2, addr3] = await ethers.getSigners();
+    const [owner, addr1, addr2, addr3, addr4] = await ethers.getSigners();
 
     const linkFee = 1000;
 
@@ -38,7 +38,7 @@ describe("Sports Betting contract", function () {
     );
     await SportsBetting.deployed();
 
-    return { SportsBettingFactory, SportsBetting, owner, addr1, addr2, addr3 }
+    return { SportsBettingFactory, SportsBetting, owner, addr1, addr2, addr3, addr4 }
   }
 
   describe("Deployment", function () {
@@ -454,6 +454,7 @@ describe("Sports Betting contract", function () {
       // Addr3 bets on a losing result (AWAY) with 6 ETH
       const addr3BetAmount = ethers.utils.parseUnits("6", 18);
 
+      // Place bets
       await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetAmount });
       await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetAmount });
       await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeAway, { value: addr3BetAmount });
@@ -493,6 +494,7 @@ describe("Sports Betting contract", function () {
       // Addr3 bets on a losing result (AWAY) with 6 ETH
       const addr3BetAmount = ethers.utils.parseUnits("6", 18);
 
+      // Place bets
       await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetAmount });
       await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetAmount });
       await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeAway, { value: addr3BetAmount });
@@ -515,6 +517,118 @@ describe("Sports Betting contract", function () {
       await expect(SportsBetting.fulfillFixturePayoutObligationsTest(dummyFixtureID, betTypeHome, winningAmount, totalAmount))
         .to.emit(SportsBetting, "BetPayout")
         .withArgs(addr1.address, dummyFixtureID, addr1ExpectedPayout);
+    });
+  });
+
+  describe("getTotalAmountBetOnFixtureOutcome", function () {
+    it("Should return zero when no bets placed", async function () {
+      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+
+      // HOME win
+      const outcomes = [betTypeHome];
+
+      expect(await SportsBetting.callStatic.getTotalAmountBetOnFixtureOutcomesTest(dummyFixtureID, outcomes))
+        .to.equal(0);
+    });
+
+    it("Should return correct bet amounts for one outcome", async function () {
+      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+
+      // Addr1 bets on HOME with 2 ETH
+      const addr1BetAmount = ethers.utils.parseUnits("2", 18);
+      // Addr2 also bets on AWAY with 1 ETH
+      const addr2BetAmount = ethers.utils.parseUnits("1", 18);
+
+      // Place bets
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetAmount });
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, { value: addr2BetAmount });
+
+      // HOME win
+      const outcomes = [betTypeHome];
+
+      expect(await SportsBetting.callStatic.getTotalAmountBetOnFixtureOutcomesTest(dummyFixtureID, outcomes))
+        .to.equal(addr1BetAmount);
+    });
+
+    it("Should return correct bet amounts for multiple outcome", async function () {
+      const { SportsBetting, addr1, addr2, addr3, addr4 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+
+      // Addr1 bets on HOME with 2 ETH
+      const addr1BetAmount = ethers.utils.parseUnits("2", 18);
+      // Addr2 bets on AWAY with 1 ETH
+      const addr2BetAmount = ethers.utils.parseUnits("1", 18);
+      // Addr3 bets on DRAW with 3 ETH
+      const addr3BetAmount = ethers.utils.parseUnits("3", 18);
+      // Addr4 bets on HOME with 8 ETH
+      const addr4BetAmount = ethers.utils.parseUnits("4", 18);
+
+      // Place bets
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetAmount });
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, { value: addr2BetAmount });
+      await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeDraw, { value: addr3BetAmount });
+      await SportsBetting.connect(addr4).stake(dummyFixtureID, betTypeHome, { value: addr4BetAmount });
+
+      // HOME win and DRAW
+      const outcomes = [betTypeHome, betTypeDraw];
+      // Expected = 2 + 3 + 4 = 9 ETH
+      const expected = ethers.utils.parseUnits("9", 18);
+
+      expect(await SportsBetting.callStatic.getTotalAmountBetOnFixtureOutcomesTest(dummyFixtureID, outcomes))
+        .to.equal(expected);
+    });
+  });
+
+  describe("getFixtureResultFromAPIResponse", function () {
+    it("Should revert if result response is unexpected string", async function () {
+      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      const unexpectedResultResponse = 'OH NO!';
+
+      // Revert string
+      const expectedReversionString = `Error on fixture ${dummyFixtureID}: Unknown result from API: ${unexpectedResultResponse}`;
+
+      await expect(SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, unexpectedResultResponse))
+        .to.emit(SportsBetting, "BetPayoutFulfillmentError")
+        .withArgs(dummyFixtureID, expectedReversionString)
+        .to.be.revertedWith(expectedReversionString);
+    });
+
+    it("Should return correct BetTypes", async function () {
+      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+
+      // Inputs
+      const homeResultResponse = 'HOME';
+      const drawResultResponse = 'DRAW';
+      const awayResultResponse = 'AWAY';
+
+      // HOME
+      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, homeResultResponse))
+        .to.equal(betTypeHome);
+
+      // DRAW
+      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, drawResultResponse))
+        .to.equal(betTypeDraw);
+
+      // AWAY
+      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, awayResultResponse))
+        .to.equal(betTypeAway);
     });
   });
 });

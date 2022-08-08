@@ -51,4 +51,18 @@ contract SportsBettingTest is SportsBetting {
     {
         return getLosingFixtureOutcomes(outcome);
     }
+
+    function getTotalAmountBetOnFixtureOutcomesTest(
+        string memory fixtureID,
+        BetType[] memory outcomes
+    ) public returns (uint256) {
+        return getTotalAmountBetOnFixtureOutcomes(fixtureID, outcomes);
+    }
+
+    function getFixtureResultFromAPIResponseTest(
+        string memory fixtureID,
+        string memory _resultResponse
+    ) public returns (BetType) {
+        return getFixtureResultFromAPIResponse(fixtureID, _resultResponse);
+    }
 }
