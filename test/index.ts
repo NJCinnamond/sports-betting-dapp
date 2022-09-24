@@ -315,7 +315,7 @@ describe("Sports Betting contract", function () {
   });
 
   describe("unstake", function () {
-    it("Should not allow unstake if bet is not OPEN", async function () {
+    it("Should not allow unstake if amount is zero", async function () {
       const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
@@ -323,8 +323,22 @@ describe("Sports Betting contract", function () {
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
 
       // ACT & ASSERT
-      await expect(SportsBetting.unstake(dummyFixtureID, betTypeHome))
-        .to.be.revertedWith("Bet activity is not open for this fixture.");
+      await expect(SportsBetting.unstake(dummyFixtureID, betTypeHome, 0))
+        .to.be.revertedWith("Amount should exceed zero.");
+    });
+
+    it("Should not allow unstake if bet is not OPEN", async function () {
+      const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
+      // Dummy unstake amount
+      const unstakeAmount = ethers.utils.parseUnits("5", 16);
+
+      // ACT & ASSERT
+      await expect(SportsBetting.unstake(dummyFixtureID, betTypeHome, unstakeAmount))
+        .to.be.revertedWith("Fixture is not in Open state.");
     });
 
     it("Should not allow unstake if caller has no stake on fixture-result", async function () {
@@ -333,13 +347,45 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      // Dummy unstake amount
+      const unstakeAmount = ethers.utils.parseUnits("5", 16);
 
       // ACT & ASSERT
-      await expect(SportsBetting.connect(addr1).unstake(dummyFixtureID, betTypeHome))
+      await expect(SportsBetting.connect(addr1).unstake(dummyFixtureID, betTypeHome, unstakeAmount))
         .to.be.revertedWith("No stake on this address-result.");
     });
 
-    it("Should update contract state variables correctly with valid unstake", async function () {
+    it("Should update contract state variables correctly with valid partial unstake", async function () {
+      const { SportsBetting, addr1 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+
+      // ACT
+      // Stake 1 ETH
+      const stakeAmount = ethers.utils.parseUnits("5", 16);
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: stakeAmount });
+
+      // Unstake 0.2 ETH
+      const unstakeAmount = ethers.utils.parseUnits("2", 16);
+      const expectedFinalStakeAmount = ethers.utils.parseUnits("3", 16);
+
+      // ASSERT
+      await expect(SportsBetting.connect(addr1).unstake(dummyFixtureID, betTypeHome, unstakeAmount))
+        .to.emit(SportsBetting, "BetUnstaked")
+        .withArgs(addr1.address, dummyFixtureID, unstakeAmount, betTypeHome);
+
+      // Expect the new stake amount to equal difference between starting stake amount and unstake amount
+      expect(await SportsBetting.amounts(dummyFixtureID, betTypeHome, addr1.address))
+        .to.equal(expectedFinalStakeAmount);
+
+      // Expect addr1 to remain an active staker
+      expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeHome, addr1.address))
+        .to.equal(true);
+    });
+
+    it("Should update contract state variables correctly with valid full unstake", async function () {
       const { SportsBetting, addr1 } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
@@ -352,13 +398,16 @@ describe("Sports Betting contract", function () {
       await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: stakeAmount });
 
       // ASSERT
-      await expect(SportsBetting.connect(addr1).unstake(dummyFixtureID, betTypeHome))
+      // Call unstake with unstakeAmount == stakeAmount for full unstake
+      await expect(SportsBetting.connect(addr1).unstake(dummyFixtureID, betTypeHome, stakeAmount))
         .to.emit(SportsBetting, "BetUnstaked")
         .withArgs(addr1.address, dummyFixtureID, stakeAmount, betTypeHome);
 
+      // Expect new stake amount to be zero as this was a full unstake
       expect(await SportsBetting.amounts(dummyFixtureID, betTypeHome, addr1.address))
         .to.equal(0);
 
+      // Expect addr1 to not remain an active staker
       expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeHome, addr1.address))
         .to.equal(false);
     });
@@ -499,8 +548,8 @@ describe("Sports Betting contract", function () {
       await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetAmount });
       await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeAway, { value: addr3BetAmount });
 
-      // Now addr2 unstakes
-      await SportsBetting.connect(addr2).unstake(dummyFixtureID, betTypeHome);
+      // Now addr2 unstakes entire stake
+      await SportsBetting.connect(addr2).unstake(dummyFixtureID, betTypeHome, addr2BetAmount);
 
       // Winning amount = 2 ETH
       // Total amount = 8 ETH

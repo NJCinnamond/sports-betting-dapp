@@ -197,19 +197,31 @@ contract SportsBetting is SportsOracleConsumer {
     }
 
     // Removes all stake in fixtureID-BetType combo
-    function unstake(string memory fixtureID, BetType betType) public {
+    function unstake(
+        string memory fixtureID,
+        BetType betType,
+        uint256 amount
+    ) public {
+        require(amount > 0, "Amount should exceed zero.");
         shouldHaveCorrectBettingState(fixtureID);
         require(
             bettingState[fixtureID] == BettingState.OPEN,
-            "Bet activity is not open for this fixture."
+            "Fixture is not in Open state."
         );
-        uint256 amountToUnstake = amounts[fixtureID][betType][msg.sender];
-        require(amountToUnstake > 0, "No stake on this address-result.");
+        uint256 amountStaked = amounts[fixtureID][betType][msg.sender];
+        require(amountStaked > 0, "No stake on this address-result.");
+        require(amount <= amountStaked, "Current stake too low.");
 
-        amounts[fixtureID][betType][msg.sender] = 0;
-        activeBetters[fixtureID][betType][msg.sender] = false;
-        payable(msg.sender).transfer(amountToUnstake);
-        emit BetUnstaked(msg.sender, fixtureID, amountToUnstake, betType);
+        // Update stake amount
+        amounts[fixtureID][betType][msg.sender] = amountStaked - amount;
+
+        // If non-partial unstake, caller is no longer an active staker
+        if (amounts[fixtureID][betType][msg.sender] <= 0) {
+            activeBetters[fixtureID][betType][msg.sender] = false;
+        }
+
+        payable(msg.sender).transfer(amount);
+        emit BetUnstaked(msg.sender, fixtureID, amount, betType);
     }
 
     function requestFixtureParameters(string memory fixtureID) internal {
@@ -315,12 +327,17 @@ contract SportsBetting is SportsOracleConsumer {
         revert(errorString);
     }
 
-    function strEqual(string memory a, string memory b) private returns (bool) {
+    function strEqual(string memory a, string memory b)
+        private
+        pure
+        returns (bool)
+    {
         return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
     }
 
     function getLosingFixtureOutcomes(BetType outcome)
         internal
+        view
         returns (BetType[] memory)
     {
         BetType[] memory losingOutcomes = new BetType[](2);
@@ -338,7 +355,7 @@ contract SportsBetting is SportsOracleConsumer {
     function getTotalAmountBetOnFixtureOutcomes(
         string memory fixtureID,
         BetType[] memory outcomes
-    ) internal returns (uint256) {
+    ) internal view returns (uint256) {
         uint256 amount;
         for (uint256 i = 0; i < outcomes.length; i++) {
             amount += getTotalAmountBetOnFixtureOutcome(fixtureID, outcomes[i]);
@@ -349,7 +366,7 @@ contract SportsBetting is SportsOracleConsumer {
     function getTotalAmountBetOnFixtureOutcome(
         string memory fixtureID,
         BetType outcome
-    ) internal returns (uint256) {
+    ) internal view returns (uint256) {
         uint256 amount;
         for (
             uint256 i = 0;

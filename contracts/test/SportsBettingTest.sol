@@ -47,6 +47,7 @@ contract SportsBettingTest is SportsBetting {
 
     function getLosingFixtureOutcomesTest(BetType outcome)
         public
+        view
         returns (BetType[] memory)
     {
         return getLosingFixtureOutcomes(outcome);
@@ -55,7 +56,7 @@ contract SportsBettingTest is SportsBetting {
     function getTotalAmountBetOnFixtureOutcomesTest(
         string memory fixtureID,
         BetType[] memory outcomes
-    ) public returns (uint256) {
+    ) public view returns (uint256) {
         return getTotalAmountBetOnFixtureOutcomes(fixtureID, outcomes);
     }
 
