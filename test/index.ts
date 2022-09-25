@@ -680,4 +680,124 @@ describe("Sports Betting contract", function () {
         .to.equal(betTypeAway);
     });
   });
+
+  describe("getStakeSummaryForUser", function () {
+    it("Should return zeros if no user stake", async function () {
+      const { SportsBetting, addr1 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
+
+      // ACT & ASSERT
+      const result = await SportsBetting.callStatic.getStakeSummaryForUserTest(dummyFixtureID, addr1.address);
+
+      // All bet types should be zero
+      expect(result[betTypeHome].toNumber()).to.equal(0);
+      expect(result[betTypeDraw].toNumber()).to.equal(0);
+      expect(result[betTypeAway].toNumber()).to.equal(0);
+    });
+
+    it("Should return correct user stake with single staker", async function () {
+      const { SportsBetting, addr1 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+
+      // Addr1 bets on HOME with 2 ETH
+      const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
+      // Addr1 bets on AWAY with 1 ETH
+      const addr1BetAwayAmount = ethers.utils.parseUnits("1", 18);
+
+      // Place bets
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, { value: addr1BetAwayAmount });
+
+      // ACT & ASSERT
+      const result = await SportsBetting.callStatic.getStakeSummaryForUserTest(dummyFixtureID, addr1.address);
+
+      // Should match addr1 stakes only
+      expect(result[betTypeHome].toString()).to.equal(addr1BetHomeAmount);
+      expect(result[betTypeDraw].toString()).to.equal('0');
+      expect(result[betTypeAway].toString()).to.equal(addr1BetAwayAmount);
+    });
+
+    it("Should return correct user stake with multiple stakers", async function () {
+      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+
+      // Addr1 bets on HOME with 2 ETH
+      const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
+      // Addr1 bets on AWAY with 1 ETH
+      const addr1BetAwayAmount = ethers.utils.parseUnits("1", 18);
+
+      // Addr2 bets on HOME with 4 ETH
+      const addr2BetHomeAmount = ethers.utils.parseUnits("4", 18);
+      // Addr2 bets on AWAY with 2 ETH
+      const addr2BetAwayAmount = ethers.utils.parseUnits("2", 18);
+
+      // Place bets
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, { value: addr1BetAwayAmount });
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetHomeAmount });
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, { value: addr2BetAwayAmount });
+
+      // ACT & ASSERT
+      const result = await SportsBetting.callStatic.getStakeSummaryForUserTest(dummyFixtureID, addr1.address);
+
+      // Should match addr1 stakes only
+      expect(result[betTypeHome].toString()).to.equal(addr1BetHomeAmount);
+      expect(result[betTypeDraw].toString()).to.equal('0');
+      expect(result[betTypeAway].toString()).to.equal(addr1BetAwayAmount);
+    });
+  });
+
+  describe("getStakeSummaryForUser", function () {
+    it("Should return correct enrichment with multiple stakers", async function () {
+      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+
+      // Addr1 bets on HOME with 2 ETH
+      const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
+      // Addr1 bets on AWAY with 1 ETH
+      const addr1BetAwayAmount = ethers.utils.parseUnits("1", 18);
+
+      // Addr2 bets on HOME with 4 ETH
+      const addr2BetHomeAmount = ethers.utils.parseUnits("4", 18);
+      // Addr2 bets on AWAY with 2 ETH
+      const addr2BetAwayAmount = ethers.utils.parseUnits("2", 18);
+
+      // Expected total stakes
+      const expectedTotalHomeAmount = ethers.utils.parseUnits("6", 18);
+      const expectedTotalAwayAmount = ethers.utils.parseUnits("3", 18);
+
+      // ACT: Place bets
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, { value: addr1BetAwayAmount });
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetHomeAmount });
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, { value: addr2BetAwayAmount });
+
+      // ACT: Addr1 calls getEnrichedFixtureData
+      const result = await SportsBetting.connect(addr1).callStatic.getEnrichedFixtureData(dummyFixtureID);
+
+      // ASSERT
+      // Fixture state should be open
+      expect(result["fixtureState"]).to.equal(bettingStateOpen);
+      // User stakes should match addr1 stakes only
+      expect(result["user"][betTypeHome].toString()).to.equal(addr1BetHomeAmount);
+      expect(result["user"][betTypeDraw].toString()).to.equal('0');
+      expect(result["user"][betTypeAway].toString()).to.equal(addr1BetAwayAmount);
+      // Total stakes should be a summation of addr1 and addr2 stakes
+      expect(result["total"][betTypeHome].toString()).to.equal(expectedTotalHomeAmount);
+      expect(result["total"][betTypeDraw].toString()).to.equal('0');
+      expect(result["total"][betTypeAway].toString()).to.equal(expectedTotalAwayAmount);
+    });
+  });
 });

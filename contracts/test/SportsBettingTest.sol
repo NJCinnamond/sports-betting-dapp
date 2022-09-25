@@ -12,6 +12,13 @@ contract SportsBettingTest is SportsBetting {
         uint256 _fee
     ) SportsBetting(_sportsOracleURI, _oracle, _link, _jobId, _fee) {}
 
+    function getStakeSummaryForUserTest(string memory fixtureID, address user)
+        public
+        returns (StakeSummary memory)
+    {
+        return getStakeSummaryForUser(fixtureID, user);
+    }
+
     // Wrapper for setting fixture betting state and emitting event
     function setFixtureBettingStateTest(
         string memory fixtureID,

@@ -20,6 +20,18 @@ contract SportsBetting is SportsOracleConsumer {
         FULFILLED
     }
 
+    struct StakeSummary {
+        uint256 home;
+        uint256 draw;
+        uint256 away;
+    }
+
+    struct FixtureEnrichment {
+        BettingState fixtureState;
+        StakeSummary total;
+        StakeSummary user;
+    }
+
     event BettingStateChanged(string fixtureID, BettingState state);
 
     event BetStaked(
@@ -96,6 +108,43 @@ contract SportsBetting is SportsOracleConsumer {
         betTypes[0] = BetType.HOME;
         betTypes[1] = BetType.DRAW;
         betTypes[2] = BetType.AWAY;
+    }
+
+    function getEnrichedFixtureData(string memory fixtureID)
+        public
+        returns (FixtureEnrichment memory)
+    {
+        return
+            FixtureEnrichment({
+                fixtureState: bettingState[fixtureID],
+                user: getStakeSummaryForUser(fixtureID, msg.sender),
+                total: StakeSummary({
+                    home: getTotalAmountBetOnFixtureOutcome(
+                        fixtureID,
+                        BetType.HOME
+                    ),
+                    draw: getTotalAmountBetOnFixtureOutcome(
+                        fixtureID,
+                        BetType.DRAW
+                    ),
+                    away: getTotalAmountBetOnFixtureOutcome(
+                        fixtureID,
+                        BetType.AWAY
+                    )
+                })
+            });
+    }
+
+    function getStakeSummaryForUser(string memory fixtureID, address user)
+        internal
+        returns (StakeSummary memory)
+    {
+        return
+            StakeSummary({
+                home: amounts[fixtureID][BetType.HOME][user],
+                draw: amounts[fixtureID][BetType.DRAW][user],
+                away: amounts[fixtureID][BetType.AWAY][user]
+            });
     }
 
     // Wrapper for setting fixture betting state and emitting event
