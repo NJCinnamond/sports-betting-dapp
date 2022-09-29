@@ -31,11 +31,10 @@ contract SportsBettingTest is SportsBetting {
         shouldHaveCorrectBettingState(fixtureID);
     }
 
-    function fulfillKickoffTimeTest(
-        string memory fixtureID,
-        uint256 _kickoffResponse
-    ) public {
-        fulfillKickoffTime(fixtureID, _kickoffResponse);
+    function updateKickoffTimeTest(string memory fixtureID, uint256 _ko)
+        public
+    {
+        updateKickoffTime(fixtureID, _ko);
     }
 
     function fulfillFixturePayoutObligationsTest(
@@ -69,8 +68,8 @@ contract SportsBettingTest is SportsBetting {
 
     function getFixtureResultFromAPIResponseTest(
         string memory fixtureID,
-        string memory _resultResponse
+        uint256 _result
     ) public returns (BetType) {
-        return getFixtureResultFromAPIResponse(fixtureID, _resultResponse);
+        return getFixtureResultFromAPIResponse(fixtureID, _result);
     }
 }

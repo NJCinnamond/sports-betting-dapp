@@ -21,16 +21,20 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
     // multiple params returned in a single oracle response
     string public fixtureResult;
 
-    event RequestedFixtureParameters(
-        bytes32 indexed requestId,
-        string fixtureID
-    );
+    event RequestedFixtureKickoff(bytes32 indexed requestId, string fixtureID);
 
-    event RequestFixtureParametersFulfilled(
+    event RequestedFixtureResult(bytes32 indexed requestId, string fixtureID);
+
+    event RequestFixtureKickoffFulfilled(
         bytes32 indexed requestId,
         string fixtureID,
-        string fixtureResult,
         uint256 kickoff
+    );
+
+    event RequestFixtureResultFulfilled(
+        bytes32 indexed requestId,
+        string fixtureID,
+        uint256 result
     );
 
     /**
@@ -60,41 +64,60 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
     }
 
     /**
-     * @notice Request mutiple parameters from the oracle in a single transaction
+     * @notice Request fixture kickoff time from the oracle in a single transaction
      */
-    function requestMultipleParameters(string memory fixtureID)
+    function requestFixtureKickoffTimeParameter(string memory fixtureID)
         public
         returns (bytes32)
     {
         Chainlink.Request memory req = buildChainlinkRequest(
             jobId,
             address(this),
-            this.rawFulfillMultipleParameters.selector
+            this.rawFulfillFixtureKickoffTime.selector
         );
-        req.add("urlResult", string.concat(sportsOracleURI, fixtureID));
-        req.add("pathResult", "Result");
-        req.add("pathKickoff", "Kickoff");
+        req.add("get", string.concat(sportsOracleURI, fixtureID));
+        req.add("path", "0,ko");
         return sendChainlinkRequest(req, fee); // MWR API.
     }
 
-    function rawFulfillMultipleParameters(
-        bytes32 _requestId,
-        string memory _resultResponse,
-        uint256 _kickoffResponse
-    ) external {
+    function rawFulfillFixtureKickoffTime(bytes32 _requestId, uint256 _ko)
+        external
+    {
         require(msg.sender == chainlink, "Only ChainlinkClient can fulfill");
-        fulfillMultipleParameters(
-            _requestId,
-            _resultResponse,
-            _kickoffResponse
-        );
+        fulfillFixtureKickoffTime(_requestId, _ko);
     }
 
-    function fulfillMultipleParameters(
-        bytes32 _requestId,
-        string memory _resultResponse,
-        uint256 _kickoffResponse
-    ) internal virtual;
+    function fulfillFixtureKickoffTime(bytes32 _requestId, uint256 _ko)
+        internal
+        virtual;
+
+    /**
+     * @notice Request fixture result from the oracle in a single transaction
+     */
+    function requestFixtureResultParameter(string memory fixtureID)
+        public
+        returns (bytes32)
+    {
+        Chainlink.Request memory req = buildChainlinkRequest(
+            jobId,
+            address(this),
+            this.rawFulfillFixtureResult.selector
+        );
+        req.add("get", string.concat(sportsOracleURI, fixtureID));
+        req.add("path", "0,result");
+        return sendChainlinkRequest(req, fee); // MWR API.
+    }
+
+    function rawFulfillFixtureResult(bytes32 _requestId, uint256 _result)
+        external
+    {
+        require(msg.sender == chainlink, "Only ChainlinkClient can fulfill");
+        fulfillFixtureResult(_requestId, _result);
+    }
+
+    function fulfillFixtureResult(bytes32 _requestId, uint256 _result)
+        internal
+        virtual;
 
     /**
      * Allow withdraw of Link tokens from the contract

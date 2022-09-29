@@ -118,7 +118,7 @@ describe("Sports Betting contract", function () {
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
 
       // Set Fixture kickoffTime
-      await SportsBetting.fulfillKickoffTimeTest(dummyFixtureID, kickoffTime);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, kickoffTime);
 
       // ACT
       await SportsBetting.shouldHaveCorrectBettingStateTest(dummyFixtureID);
@@ -146,7 +146,7 @@ describe("Sports Betting contract", function () {
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
 
       // Set Fixture kickoffTime
-      await SportsBetting.fulfillKickoffTimeTest(dummyFixtureID, kickoffTime);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, kickoffTime);
 
       // ACT
       await SportsBetting.shouldHaveCorrectBettingStateTest(dummyFixtureID);
@@ -161,20 +161,20 @@ describe("Sports Betting contract", function () {
       // ASSIGN
 
       // Set time-dependent vars
-      // Because the block ts is more than 60 mins (betCutOffTime) to left of the kickoffTime, and within
+      // Because the block ts is more than 90 mins (betCutOffTime) to left of the kickoffTime, and within
       // 1 week (betAdvanceTime) of the kickoffTime, it is valid
-      const currentTimestamp = 2000002000;
+      const currentTimestamp = 2000000000;
       const kickoffTime = 2000007000;
 
       // Manipulate block timestamp
-      await network.provider.send("evm_setNextBlockTimestamp", [currentTimestamp])
-      await network.provider.send("evm_mine")
+      await network.provider.send("evm_setNextBlockTimestamp", [currentTimestamp]);
+      await network.provider.send("evm_mine");
 
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
 
       // Set Fixture kickoffTime
-      await SportsBetting.fulfillKickoffTimeTest(dummyFixtureID, kickoffTime);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, kickoffTime);
 
       // ACT
       await SportsBetting.shouldHaveCorrectBettingStateTest(dummyFixtureID);
@@ -201,7 +201,7 @@ describe("Sports Betting contract", function () {
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
 
       // Set Fixture kickoffTime
-      await SportsBetting.fulfillKickoffTimeTest(dummyFixtureID, kickoffTime);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, kickoffTime);
 
       // ACT
       await SportsBetting.shouldHaveCorrectBettingStateTest(dummyFixtureID);
@@ -238,9 +238,9 @@ describe("Sports Betting contract", function () {
       // ASSIGN
 
       // Set time-dependent vars
-      // Kickoff time is further than 60 mins (betCutOffTime) from kickoff time so it
+      // Kickoff time is further than 90 mins (betCutOffTime) from kickoff time so it
       // will not be moved to AWAITING
-      const currentTimestamp = 2000002000;
+      const currentTimestamp = 2000001000;
       const kickoffTime = 2000007000;
 
       // Manipulate block timestamp
@@ -251,7 +251,7 @@ describe("Sports Betting contract", function () {
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
 
       // Set Fixture kickoffTime
-      await SportsBetting.fulfillKickoffTimeTest(dummyFixtureID, kickoffTime);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, kickoffTime);
 
       // ACT
       await SportsBetting.shouldHaveCorrectBettingStateTest(dummyFixtureID);
@@ -271,7 +271,7 @@ describe("Sports Betting contract", function () {
 
       // ACT & ASSERT
       await expect(SportsBetting.stake(dummyFixtureID, betTypeHome))
-        .to.be.revertedWith("Bet activity is not open for this fixture.");
+        .to.be.revertedWith("Bet activity is not open.");
     });
 
     it("Should not allow stake if amount is below entrance fee", async function () {
@@ -422,7 +422,7 @@ describe("Sports Betting contract", function () {
       const kickoffTime = 2000007000;
 
       // ACT & ASSERT
-      await expect(SportsBetting.fulfillKickoffTimeTest(dummyFixtureID, kickoffTime))
+      await expect(SportsBetting.updateKickoffTimeTest(dummyFixtureID, kickoffTime))
         .to.emit(SportsBetting, "KickoffTimeUpdated")
         .withArgs(dummyFixtureID, kickoffTime);
     });
@@ -640,15 +640,15 @@ describe("Sports Betting contract", function () {
   });
 
   describe("getFixtureResultFromAPIResponse", function () {
-    it("Should revert if result response is unexpected string", async function () {
+    it("Should revert if result response is unexpected uint256", async function () {
       const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
       const dummyFixtureID = '1234';
-      const unexpectedResultResponse = 'OH NO!';
+      const unexpectedResultResponse = 69; // No BetType enum value with 4 so this should fail
 
       // Revert string
-      const expectedReversionString = `Error on fixture ${dummyFixtureID}: Unknown result from API: ${unexpectedResultResponse}`;
+      const expectedReversionString = `Error on fixture ${dummyFixtureID}: Unknown fixture result from API`;
 
       await expect(SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, unexpectedResultResponse))
         .to.emit(SportsBetting, "BetPayoutFulfillmentError")
@@ -662,21 +662,16 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
 
-      // Inputs
-      const homeResultResponse = 'HOME';
-      const drawResultResponse = 'DRAW';
-      const awayResultResponse = 'AWAY';
-
       // HOME
-      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, homeResultResponse))
+      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, betTypeHome))
         .to.equal(betTypeHome);
 
       // DRAW
-      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, drawResultResponse))
+      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, betTypeDraw))
         .to.equal(betTypeDraw);
 
       // AWAY
-      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, awayResultResponse))
+      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, betTypeAway))
         .to.equal(betTypeAway);
     });
   });
