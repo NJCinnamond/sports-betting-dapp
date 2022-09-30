@@ -27,6 +27,10 @@ contract SportsBettingTest is SportsBetting {
         setFixtureBettingState(fixtureID, state);
     }
 
+    function handleClosingBetsForFixtureTest(string memory fixtureID) public {
+        handleClosingBetsForFixture(fixtureID);
+    }
+
     function shouldHaveCorrectBettingStateTest(string memory fixtureID) public {
         shouldHaveCorrectBettingState(fixtureID);
     }

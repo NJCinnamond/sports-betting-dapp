@@ -26,11 +26,17 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
 // You need to export an object to set up your config
 // Go to https://hardhat.org/config/ to learn more
 
-const config: HardhatUserConfig = {
+module.exports = {
   solidity: {
     compilers: [
       {
-        version: "0.8.12"
+        version: "0.8.12",
+        settings: {
+          optimizer: {
+            enabled: true,
+            runs: 1000,
+          },
+        }
       },
       {
         version: "0.4.11"
@@ -38,7 +44,7 @@ const config: HardhatUserConfig = {
       {
         version: "0.4.24"
       }
-    ]
+    ],
   },
   networks: {
     hardhat: {
@@ -49,6 +55,7 @@ const config: HardhatUserConfig = {
       url: process.env.GOERLI_URL || "",
       accounts:
         process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+      deploy: ['goerli-deploy/']
     },
 
   },
@@ -65,5 +72,3 @@ const config: HardhatUserConfig = {
     },
   },
 };
-
-export default config;

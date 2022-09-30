@@ -7,9 +7,10 @@ const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 
 // Contract enums
 const bettingStateClosed = 0;
-const bettingStateOpen = 1;
-const bettingStateAwaiting = 2;
-const bettingStateFulfilling = 3;
+const bettingStateOpening = 1;
+const bettingStateOpen = 2;
+const bettingStateAwaiting = 3;
+const bettingStateFulfilling = 4;
 
 const betTypeHome = 0;
 const betTypeDraw = 1;
@@ -17,7 +18,6 @@ const betTypeAway = 2;
 
 describe("Sports Betting contract", function () {
   async function deploySportsBettingFixture() {
-    // TODO: Mock SportsOracleConsumer ctx
     const [deployerOfContract] = provider.getWallets();
 
     const LinkToken = require('../artifacts/contracts/mock/LinkToken.sol/LinkToken.json');
@@ -63,7 +63,7 @@ describe("Sports Betting contract", function () {
   })
 
   describe("shouldHaveCorrectBettingState", function () {
-    it("Should not OPEN if bet is not CLOSED", async function () {
+    it("Should CLOSE if bet is not OPENING", async function () {
       const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
@@ -77,7 +77,7 @@ describe("Sports Betting contract", function () {
       expect(await SportsBetting.bettingState(dummyFixtureID)).to.equal(bettingStateClosed);
     });
 
-    it("Should not OPEN if bet has no kickoff time", async function () {
+    it("Should CLOSE if bet has no kickoff time", async function () {
       const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
@@ -90,7 +90,7 @@ describe("Sports Betting contract", function () {
       await network.provider.send("evm_mine")
 
       const dummyFixtureID = '1234';
-      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpening);
 
       // ACT
       await SportsBetting.shouldHaveCorrectBettingStateTest(dummyFixtureID);
@@ -99,13 +99,13 @@ describe("Sports Betting contract", function () {
       expect(await SportsBetting.bettingState(dummyFixtureID)).to.equal(bettingStateClosed);
     });
 
-    it("Should not OPEN if current block timestamp is too close to kickoff time", async function () {
+    it("Should CLOSE if bet is OPENING but block timestamp is too close to kickoff time", async function () {
       const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
 
       // Set time-dependent vars
-      // Because the block ts is less than 60 mins (betCutOffTime) to left of the kickoffTime, 
+      // Because the block ts is less than 90 mins (betCutOffTime) to left of the kickoffTime, 
       // it is invalid
       const currentTimestamp = 2000006000;
       const kickoffTime = 2000007000;
@@ -115,7 +115,7 @@ describe("Sports Betting contract", function () {
       await network.provider.send("evm_mine")
 
       const dummyFixtureID = '1234';
-      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpening);
 
       // Set Fixture kickoffTime
       await SportsBetting.updateKickoffTimeTest(dummyFixtureID, kickoffTime);
@@ -127,14 +127,13 @@ describe("Sports Betting contract", function () {
       expect(await SportsBetting.bettingState(dummyFixtureID)).to.equal(bettingStateClosed);
     });
 
-    it("Should not OPEN if current block timestamp is too far from kickoff time", async function () {
+    it("Should CLOSE if bet is OPENING but block timestamp is too far from kickoff time", async function () {
       const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
 
       // Set time-dependent vars
-      // Because the block ts is more than 60 mins (betCutOffTime) to left of the kickoffTime, and within
-      // 1 week (betAdvanceTime) of the kickoffTime, it is valid
+      // Because the block ts is more than 1 week (betAdvanceTime) to left of the kickoffTime, it is invalid
       const currentTimestamp = 1900002000;
       const kickoffTime = 2000007000;
 
@@ -143,7 +142,7 @@ describe("Sports Betting contract", function () {
       await network.provider.send("evm_mine")
 
       const dummyFixtureID = '1234';
-      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpening);
 
       // Set Fixture kickoffTime
       await SportsBetting.updateKickoffTimeTest(dummyFixtureID, kickoffTime);
@@ -155,7 +154,7 @@ describe("Sports Betting contract", function () {
       expect(await SportsBetting.bettingState(dummyFixtureID)).to.equal(bettingStateClosed);
     });
 
-    it("Should OPEN if bet is CLOSED, kickoff time is present and valid timestamp", async function () {
+    it("Should OPEN if bet is OPENING, kickoff time is present and valid timestamp", async function () {
       const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
@@ -171,7 +170,7 @@ describe("Sports Betting contract", function () {
       await network.provider.send("evm_mine");
 
       const dummyFixtureID = '1234';
-      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpening);
 
       // Set Fixture kickoffTime
       await SportsBetting.updateKickoffTimeTest(dummyFixtureID, kickoffTime);
@@ -183,13 +182,13 @@ describe("Sports Betting contract", function () {
       expect(await SportsBetting.bettingState(dummyFixtureID)).to.equal(bettingStateOpen);
     });
 
-    it("Should set AWAITING if bet is OPEN and current timestamp is valid", async function () {
+    it("Should set AWAITING if bet is OPEN and current timestamp is within betCutoffTime of kickoff time", async function () {
       const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
 
       // Set time-dependent vars
-      // Because the block ts is within 60 mins (betCutOffTime) of the kickoffTime, it is valid
+      // Because the block ts is within 90 mins (betCutOffTime) of the kickoffTime, it is valid
       const currentTimestamp = 2000006000;
       const kickoffTime = 2000007000;
 
@@ -208,28 +207,6 @@ describe("Sports Betting contract", function () {
 
       // ASSERT
       expect(await SportsBetting.bettingState(dummyFixtureID)).to.equal(bettingStateAwaiting);
-    });
-
-    it("Should not set AWAITING if kickoff time is not present", async function () {
-      const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
-
-      // ASSIGN
-
-      // Set time-dependent vars
-      const currentTimestamp = 2000006000;
-
-      // Manipulate block timestamp
-      await network.provider.send("evm_setNextBlockTimestamp", [currentTimestamp])
-      await network.provider.send("evm_mine")
-
-      const dummyFixtureID = '1234';
-      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-
-      // ACT
-      await SportsBetting.shouldHaveCorrectBettingStateTest(dummyFixtureID);
-
-      // ASSERT
-      expect(await SportsBetting.bettingState(dummyFixtureID)).to.equal(bettingStateOpen);
     });
 
     it("Should not set AWAITING if current timestamp is too far from kickoff time", async function () {
@@ -259,6 +236,19 @@ describe("Sports Betting contract", function () {
       // ASSERT
       expect(await SportsBetting.bettingState(dummyFixtureID)).to.equal(bettingStateOpen);
     });
+
+    it("Should not set AWAITING if bet is not OPEN", async function () {
+      const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+
+      // ACT
+      await SportsBetting.shouldHaveCorrectBettingStateTest(dummyFixtureID);
+
+      // ASSERT
+      expect(await SportsBetting.bettingState(dummyFixtureID)).to.equal(bettingStateClosed);
+    });
   });
 
   describe("stake", function () {
@@ -280,6 +270,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       const amountBelowEntranceFee = 1;
 
@@ -294,6 +285,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       // Stake 1 ETH
       const stakeAmount = ethers.utils.parseUnits("5", 18);
@@ -347,6 +339,8 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+
       // Dummy unstake amount
       const unstakeAmount = ethers.utils.parseUnits("5", 16);
 
@@ -361,6 +355,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       // ACT
       // Stake 1 ETH
@@ -391,6 +386,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       // ACT
       // Stake 1 ETH
@@ -495,6 +491,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       // Addr1 bets on correct result (HOME) with 2 ETH
       const addr1BetAmount = ethers.utils.parseUnits("2", 18);
@@ -535,6 +532,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       // Addr1 bets on correct result (HOME) with 2 ETH
       const addr1BetAmount = ethers.utils.parseUnits("2", 18);
@@ -590,6 +588,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetAmount = ethers.utils.parseUnits("2", 18);
@@ -613,6 +612,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetAmount = ethers.utils.parseUnits("2", 18);
@@ -645,7 +645,7 @@ describe("Sports Betting contract", function () {
 
       // ASSIGN
       const dummyFixtureID = '1234';
-      const unexpectedResultResponse = 69; // No BetType enum value with 4 so this should fail
+      const unexpectedResultResponse = 69; // No BetType enum value with 69 so this should fail
 
       // Revert string
       const expectedReversionString = `Error on fixture ${dummyFixtureID}: Unknown fixture result from API`;
@@ -699,6 +699,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
@@ -724,6 +725,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
@@ -758,6 +760,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
@@ -793,6 +796,64 @@ describe("Sports Betting contract", function () {
       expect(result["total"][betTypeHome].toString()).to.equal(expectedTotalHomeAmount);
       expect(result["total"][betTypeDraw].toString()).to.equal('0');
       expect(result["total"][betTypeAway].toString()).to.equal(expectedTotalAwayAmount);
+    });
+  });
+
+  describe("handleClosingBetsForFixture", function () {
+    it("Should fully refund all stakers for all fixture amounts", async function () {
+      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+
+      // Addr1 bets on HOME with 2 ETH
+      const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
+      // Addr1 bets on AWAY with 1 ETH
+      const addr1BetAwayAmount = ethers.utils.parseUnits("1", 18);
+
+      // Addr2 bets on HOME with 4 ETH
+      const addr2BetHomeAmount = ethers.utils.parseUnits("4", 18);
+      // Addr2 bets on DRAW with 2 ETH
+      const addr2BetDrawAmount = ethers.utils.parseUnits("2", 18);
+
+      // ACT: Place bets
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, { value: addr1BetAwayAmount });
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetHomeAmount });
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeDraw, { value: addr2BetDrawAmount });
+
+      // ASSERT
+      await expect(SportsBetting.handleClosingBetsForFixtureTest(dummyFixtureID))
+        .to.emit(SportsBetting, "BetUnstaked")
+        .withArgs(addr1.address, dummyFixtureID, addr1BetHomeAmount, betTypeHome)
+        .to.emit(SportsBetting, "BetUnstaked")
+        .withArgs(addr1.address, dummyFixtureID, addr1BetAwayAmount, betTypeAway)
+        .to.emit(SportsBetting, "BetUnstaked")
+        .withArgs(addr2.address, dummyFixtureID, addr2BetHomeAmount, betTypeHome)
+        .to.emit(SportsBetting, "BetUnstaked")
+        .withArgs(addr2.address, dummyFixtureID, addr2BetDrawAmount, betTypeDraw);
+
+      // Expect the new stake amount to equal zero for both addresses
+      expect(await SportsBetting.amounts(dummyFixtureID, betTypeHome, addr1.address))
+        .to.equal(0);
+      expect(await SportsBetting.amounts(dummyFixtureID, betTypeAway, addr1.address))
+        .to.equal(0);
+      expect(await SportsBetting.amounts(dummyFixtureID, betTypeHome, addr2.address))
+        .to.equal(0);
+      expect(await SportsBetting.amounts(dummyFixtureID, betTypeDraw, addr2.address))
+        .to.equal(0);
+
+      // Expect addr1 and addr2 to not be active betters
+      expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeHome, addr1.address))
+        .to.equal(false);
+      expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeAway, addr1.address))
+        .to.equal(false);
+      expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeHome, addr2.address))
+        .to.equal(false);
+      expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeDraw, addr2.address))
+        .to.equal(false);
     });
   });
 });

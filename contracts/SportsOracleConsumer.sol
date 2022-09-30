@@ -2,15 +2,16 @@
 pragma solidity ^0.8.12;
 
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
-import "@chainlink/contracts/src/v0.8/ConfirmedOwner.sol";
 
 /**
  * Request testnet LINK and ETH here: https://faucets.chain.link/
  * Find information on LINK Token Contracts and get the latest ETH and LINK faucets here: https://docs.chain.link/docs/link-token-contracts/
  */
 
-abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
+abstract contract SportsOracleConsumer is ChainlinkClient {
     using Chainlink for Chainlink.Request;
+
+    address payable public owner;
 
     address public chainlink;
     string public sportsOracleURI;
@@ -54,7 +55,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
         address _link,
         bytes32 _jobId,
         uint256 _fee
-    ) ConfirmedOwner(msg.sender) {
+    ) {
         sportsOracleURI = _sportsOracleURI;
         setChainlinkToken(_link);
         setChainlinkOracle(_oracle);
@@ -62,6 +63,9 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
         //jobId = _jobId;
         jobId = "ca98366cc7314957b8c012c72f05aeeb";
         fee = _fee;
+
+        // Set owner
+        owner = payable(msg.sender);
     }
 
     /**
@@ -127,7 +131,8 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
     /**
      * Allow withdraw of Link tokens from the contract
      */
-    function withdrawLink() public onlyOwner {
+    function withdrawLink() public {
+        require(msg.sender == owner, "Only owner can withdraw LINK");
         LinkTokenInterface link = LinkTokenInterface(chainlinkTokenAddress());
         require(
             link.transfer(msg.sender, link.balanceOf(address(this))),
