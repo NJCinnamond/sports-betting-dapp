@@ -17,7 +17,7 @@ async function main() {
   const sportsOracleURI = "https://1vyuff64d9.execute-api.us-east-1.amazonaws.com/dev/fixtures/";
   const goerliOracleOperatorCtx = "0xcc79157eb46f5624204f47ab42b3906caa40eab7";
   const goerliLinkAddress = "0x326C977E6efc84E512bB9C30f76E30c160eD06FB";
-  const goerliOracleJobID = ethers.utils.hexlify(ethers.utils.toUtf8Bytes("7d80a6386ef543a3abb52817f6707e3b"));
+  const goerliOracleJobID = ethers.utils.hexlify(ethers.utils.toUtf8Bytes("ca98366cc7314957b8c012c72f05aeeb"));
   console.log("Job id: ", goerliOracleJobID);
   const goerliOracleRequestFee = BigNumber.from("100000000000000000"); // 0.1 LINK
   console.log("Fee: ", goerliOracleRequestFee);

@@ -14,10 +14,11 @@ contract SportsBetting is SportsOracleConsumer {
 
     enum BettingState {
         CLOSED,
+        OPENING,
         OPEN,
         AWAITING,
         FULFILLING,
-        FULFILLED
+        FULFILLED,
     }
 
     struct StakeSummary {
@@ -156,7 +157,28 @@ contract SportsBetting is SportsOracleConsumer {
     {
         bettingState[fixtureID] = state;
         emit BettingStateChanged(fixtureID, state);
+        // EDGE CASE: We close betting for a fixture that has bets placed, i.e. in the case
+        // of a postponed fixture or an errant opening
+        // We need to pay back the betters who placed bets
+        if (state == BettingState.CLOSED) {
+            handleClosingBetsForFixture(fixtureID);
+        }
     }
+
+    // closeBetForFixture calls shouldHaveCorrectBettingState which, if kickoff time
+    // is in a certain position relative to current timestamp, will close the bet
+    function closeBetForFixture(string memory fixtureID) public {
+        require(
+            bettingState[fixtureID] != BettingState.CLOSED,
+            "Bet state is already CLOSED."
+        );
+        shouldHaveCorrectBettingState(fixtureID);
+    }
+
+    // TODO: Pay back betters if betting must be closed?
+    // Psuedo: for all historical betters for fixtureID, check if they have any
+    // amounts betted, and if so, refund them
+    function handleClosingBetsForFixture(string memory fixtureID) internal {}
 
     // openBetForFixture makes an API call to oracle. It is expected that this
     // call will return the kickoff_time and the fulfillFixtureKickoffTime func
@@ -165,42 +187,68 @@ contract SportsBetting is SportsOracleConsumer {
     // know that it advanced enough in the future
     function openBetForFixture(string memory fixtureID) public {
         require(
-            bettingState[fixtureID] != BettingState.OPEN,
-            "Bet state is already OPEN."
+            bettingState[fixtureID] != BettingState.OPEN &&
+                bettingState[fixtureID] != BettingState.OPENING,
+            "Bet state is OPEN or OPENING."
         );
+        setFixtureBettingState(fixtureID, BettingState.OPENING);
         requestFixtureKickoffTime(fixtureID);
     }
 
-    function closeBetForFixture(string memory fixtureID) public onlyOwner {
+    // Ideally the betting state will change from OPEN -> AWAITING
+    // by virtue of a bet being placed too close to KO time, however
+    // in the event this doesn't happen, this function can be called to
+    // attempt to change state to AWAITING
+    // This also helps resolve bugs whereby the bet is marked as fulfilled
+    // when it is not
+    function awaitBetForFixture(string memory fixtureID) public {
         require(
-            bettingState[fixtureID] != BettingState.CLOSED,
-            "Bet state is already CLOSED."
+            bettingState[fixtureID] == BettingState.OPEN,
+            "Bet state must be OPEN."
         );
-        setFixtureBettingState(fixtureID, BettingState.CLOSED);
+        shouldHaveCorrectBettingState(fixtureID, BettingState.AWAITING);
     }
 
-    // Because the betting state transition OPEN -> AWAITING depends on
-    // real-world time, we cannot simply rely on ctx state variables to
-    // deduce if a fixture-bet remains open
-    // In this function we deduce whether betting is open based on current
-    // block timestamp, update the state accordingly, and return the result
+    // This function handles betting state transitions respective to bet kickoff time
+    // In general, a bet should be
+    // CLOSED       if time < kickoff - betAdvanceTime
+    // OPEN         if kickoff - betAdvanceTime <= time <= ko - betCutOffTime
+    // AWAITING     if time > ko - betCutOffTime
     function shouldHaveCorrectBettingState(string memory fixtureID) internal {
         uint256 ko = fixtureToKickoffTime[fixtureID];
 
         if (ko == 0) return;
 
-        // If a bet is CLOSED, it can be OPENed if the kickoff time is
+        // OPENING/OPEN/AWAITING -> CLOSED
+        // If current time is more than betAdvanceTime to the left of ko, then
+        // close fixture
+        if (
+            (bettingState[fixtureID] == BettingState.OPENING ||
+                bettingState[fixtureID] == BettingState.OPEN ||
+                bettingState[fixtureID] == BettingState.AWAITING) &&
+            block.timestamp < ko - betAdvanceTime
+        ) {
+            setFixtureBettingState(fixtureID, BettingState.CLOSED);
+            return;
+        }
+
+        // CLOSED/OPENING/AWAITING -> OPEN
+        // If a bet is OPENING, it can be OPENed if the kickoff time is
         // present and current timestamp is more than betCutOffTime before it
         // less than the betAdvanceTime after it
         if (
-            bettingState[fixtureID] == BettingState.CLOSED &&
+            (bettingState[fixtureID] == BettingState.CLOSED ||
+                bettingState[fixtureID] == BettingState.OPENING ||
+                bettingState[fixtureID] == BettingState.AWAITING) &&
             block.timestamp <= ko - betCutOffTime &&
             block.timestamp >= ko - betAdvanceTime &&
             betCutOffTime != 0
         ) {
             setFixtureBettingState(fixtureID, BettingState.OPEN);
+            return;
         }
 
+        // OPEN -> AWAITING
         // If a bet is OPEN, it becomes AWAITING if the kickoff time is
         // present and current timestamp is more than betCutOffTime to
         // the right of it
@@ -210,28 +258,16 @@ contract SportsBetting is SportsOracleConsumer {
             betCutOffTime != 0
         ) {
             setFixtureBettingState(fixtureID, BettingState.AWAITING);
+            return;
         }
-    }
-
-    // Ideally the betting state will change from OPEN -> AWAITING
-    // by virtue of a bet being placed too close to KO time, however
-    // in the event this doesn't happen we allow a method for ctx owner
-    // to force AWAITING
-    // This also helps resolve bugs whereby the bet is marked as fulfilled
-    // when it is not
-    function awaitBetForFixture(string memory fixtureID) public onlyOwner {
-        require(
-            bettingState[fixtureID] != BettingState.AWAITING,
-            "Bet state is already AWAITING."
-        );
-        setFixtureBettingState(fixtureID, BettingState.AWAITING);
     }
 
     function fulfillBetForFixture(string memory fixtureID) public {
         require(
-            bettingState[fixtureID] != BettingState.AWAITING,
+            bettingState[fixtureID] == BettingState.AWAITING,
             "Bet state must be AWAITING."
         );
+        setFixtureBettingState(fixtureID, BettingState.FULFILLING);
         requestFixtureResult(fixtureID);
     }
 
@@ -285,7 +321,6 @@ contract SportsBetting is SportsOracleConsumer {
     function fulfillFixtureKickoffTime(bytes32 _requestId, uint256 _ko)
         internal
         override
-        recordChainlinkFulfillment(_requestId)
     {
         string memory fixtureID = requestKickoffToFixture[_requestId];
         emit RequestFixtureKickoffFulfilled(_requestId, fixtureID, _ko);
@@ -310,14 +345,12 @@ contract SportsBetting is SportsOracleConsumer {
     function fulfillFixtureResult(bytes32 _requestId, uint256 _result)
         internal
         override
-        recordChainlinkFulfillment(_requestId)
     {
         string memory fixtureID = requestResultToFixture[_requestId];
         emit RequestFixtureResultFulfilled(_requestId, fixtureID, _result);
 
-        // Only action on fixture result if we are in AWAITING
-        if (bettingState[fixtureID] == BettingState.AWAITING) {
-            setFixtureBettingState(fixtureID, BettingState.FULFILLING);
+        // Only action on fixture result if we are in FULFILLING
+        if (bettingState[fixtureID] == BettingState.FULFILLING) {
             updateFixtureResult(fixtureID, _result);
             setFixtureBettingState(fixtureID, BettingState.FULFILLED);
         }
@@ -364,6 +397,10 @@ contract SportsBetting is SportsOracleConsumer {
         } else if (_result == uint256(BetType.AWAY)) {
             return BetType.AWAY;
         }
+
+        // Error: unknown value in 'result' field
+        // Set fixture state to AWAITING so we can try again in future
+        setFixtureBettingState(fixtureID, BettingState.AWAITING);
 
         string memory errorString = string.concat(
             "Error on fixture ",

@@ -59,7 +59,8 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
         setChainlinkToken(_link);
         setChainlinkOracle(_oracle);
         chainlink = _oracle;
-        jobId = _jobId;
+        //jobId = _jobId;
+        jobId = "ca98366cc7314957b8c012c72f05aeeb";
         fee = _fee;
     }
 
@@ -77,11 +78,13 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
         );
         req.add("get", string.concat(sportsOracleURI, fixtureID));
         req.add("path", "0,ko");
+        req.addInt("times", 1);
         return sendChainlinkRequest(req, fee); // MWR API.
     }
 
     function rawFulfillFixtureKickoffTime(bytes32 _requestId, uint256 _ko)
-        external
+        public
+        recordChainlinkFulfillment(_requestId)
     {
         require(msg.sender == chainlink, "Only ChainlinkClient can fulfill");
         fulfillFixtureKickoffTime(_requestId, _ko);
@@ -105,11 +108,13 @@ abstract contract SportsOracleConsumer is ChainlinkClient, ConfirmedOwner {
         );
         req.add("get", string.concat(sportsOracleURI, fixtureID));
         req.add("path", "0,result");
+        req.addInt("times", 1);
         return sendChainlinkRequest(req, fee); // MWR API.
     }
 
     function rawFulfillFixtureResult(bytes32 _requestId, uint256 _result)
-        external
+        public
+        recordChainlinkFulfillment(_requestId)
     {
         require(msg.sender == chainlink, "Only ChainlinkClient can fulfill");
         fulfillFixtureResult(_requestId, _result);
