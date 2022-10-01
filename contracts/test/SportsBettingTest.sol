@@ -12,6 +12,25 @@ contract SportsBettingTest is SportsBetting {
         uint256 _fee
     ) SportsBetting(_sportsOracleURI, _oracle, _link, _jobId, _fee) {}
 
+    function initializeHistoricalBettersTest(string memory fixtureID) public {
+        initializeHistoricalBetters(fixtureID);
+    }
+
+    function getHistoricalBettersLength(
+        string memory fixtureID,
+        BetType betType
+    ) public view returns (uint256) {
+        return historicalBetters[fixtureID][betType].length;
+    }
+
+    function setHistoricalBetters(
+        string memory fixtureID,
+        BetType betType,
+        address[] memory addresses
+    ) public {
+        historicalBetters[fixtureID][betType] = addresses;
+    }
+
     function getStakeSummaryForUserTest(string memory fixtureID, address user)
         public
         returns (StakeSummary memory)

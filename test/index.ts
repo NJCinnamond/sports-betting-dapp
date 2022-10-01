@@ -62,6 +62,65 @@ describe("Sports Betting contract", function () {
     });
   })
 
+  describe("initializeHistoricalBetters", function () {
+    it("Should correctly initialize historicalBetters for each bet type", async function () {
+      const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
+
+      // ACT & ASSERT
+      const dummyFixtureID = '1234';
+      await SportsBetting.initializeHistoricalBettersTest(dummyFixtureID);
+
+      const zeroAddress = '0x0000000000000000000000000000000000000000';
+
+      expect(await SportsBetting.historicalBetters(dummyFixtureID, betTypeHome, 0)).to.equal(zeroAddress);
+      expect(await SportsBetting.getHistoricalBettersLength(dummyFixtureID, betTypeHome)).to.equal(1);
+
+      expect(await SportsBetting.historicalBetters(dummyFixtureID, betTypeAway, 0)).to.equal(zeroAddress);
+      expect(await SportsBetting.getHistoricalBettersLength(dummyFixtureID, betTypeAway)).to.equal(1);
+
+      expect(await SportsBetting.historicalBetters(dummyFixtureID, betTypeDraw, 0)).to.equal(zeroAddress);
+      expect(await SportsBetting.getHistoricalBettersLength(dummyFixtureID, betTypeDraw)).to.equal(1);
+    });
+
+    it("Should correctly initialize historicalBetters for each bet type after CLOSE from OPEN with stakes", async function () {
+      const { SportsBetting, addr1 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      const zeroAddress = '0x0000000000000000000000000000000000000000';
+
+      // Dummy addresses
+      const dummyAddr1 = '0x000000000000000000000000000000000000000a';
+      const dummyAddr2 = '0x000000000000000000000000000000000000000b';
+      const dummyAddr3 = '0x000000000000000000000000000000000000000c';
+
+      // Dummy historical betters arrays
+      const homeHistoricalBetters = [zeroAddress, dummyAddr1, dummyAddr2];
+      const awayHistoricalBetters = [zeroAddress, dummyAddr3];
+      const drawHistoricalBetters = [zeroAddress];
+
+      // Set dummy historical betters arrays
+      await SportsBetting.setHistoricalBetters(dummyFixtureID, betTypeHome, homeHistoricalBetters);
+      await SportsBetting.setHistoricalBetters(dummyFixtureID, betTypeAway, awayHistoricalBetters);
+      await SportsBetting.setHistoricalBetters(dummyFixtureID, betTypeDraw, drawHistoricalBetters);
+
+      // ACT
+      // Reinitialize historical betters
+      await SportsBetting.initializeHistoricalBettersTest(dummyFixtureID);
+
+      // ASSERT
+      // Expect historical betters for all 3 bet types to equal array with zero address as single item
+      expect(await SportsBetting.historicalBetters(dummyFixtureID, betTypeHome, 0)).to.equal(zeroAddress);
+      expect(await SportsBetting.getHistoricalBettersLength(dummyFixtureID, betTypeHome)).to.equal(1);
+
+      expect(await SportsBetting.historicalBetters(dummyFixtureID, betTypeAway, 0)).to.equal(zeroAddress);
+      expect(await SportsBetting.getHistoricalBettersLength(dummyFixtureID, betTypeAway)).to.equal(1);
+
+      expect(await SportsBetting.historicalBetters(dummyFixtureID, betTypeDraw, 0)).to.equal(zeroAddress);
+      expect(await SportsBetting.getHistoricalBettersLength(dummyFixtureID, betTypeDraw)).to.equal(1);
+    });
+  })
+
   describe("shouldHaveCorrectBettingState", function () {
     it("Should CLOSE if bet is not OPENING", async function () {
       const { SportsBetting, owner } = await loadFixture(deploySportsBettingFixture);
