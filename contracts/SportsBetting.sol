@@ -73,6 +73,13 @@ contract SportsBetting is SportsOracleConsumer {
     // bets for that fixture-result pair
     mapping(string => mapping(BetType => address[])) public historicalBetters;
 
+    // We want to store unique addresses in historicalBetters mapping.
+    // Solidity has no native set type, so we keep a mapping of address to fixture type to bet type
+    // to index in historicalBetters
+    // We only append an address to historicalBetters if it does not have an existing index
+    mapping(string => mapping(BetType => mapping(address => uint256)))
+        public historicalBettersIndex;
+
     // activeBetters represents all addresses who currently have an amount staked on a fixture-result
     // The mapping(address => bool) pattern allows us to set address to true or false if an address
     // stakes/unstakes for that bet, and allows safer 'contains' methods on the betters
@@ -108,6 +115,49 @@ contract SportsBetting is SportsOracleConsumer {
         betTypes[0] = BetType.HOME;
         betTypes[1] = BetType.DRAW;
         betTypes[2] = BetType.AWAY;
+    }
+
+    function initializeHistoricalBetters(string memory fixtureID) internal {
+        for (uint256 i = 0; i < betTypes.length; i++) {
+            initializeHistoricalBettersForBetType(fixtureID, betTypes[i]);
+        }
+    }
+
+    function initializeHistoricalBettersForBetType(
+        string memory fixtureID,
+        BetType betType
+    ) internal {
+        // This code initializes our map for historical betters in fixture
+        // It ensures we can reliably track only unique betters for fixture
+        historicalBetters[fixtureID][betType] = [address(0x0)];
+    }
+
+    function isHistoricalBetter(
+        string memory fixtureID,
+        BetType betType,
+        address staker
+    ) internal returns (bool) {
+        // address 0x0 is not valid if pos is 0 is not in the array
+        if (
+            staker != address(0x0) &&
+            historicalBettersIndex[fixtureID][betType][staker] > 0
+        ) {
+            return true;
+        }
+        return false;
+    }
+
+    function addHistoricalBetter(
+        string memory fixtureID,
+        BetType betType,
+        address staker
+    ) internal {
+        if (!isHistoricalBetter(fixtureID, betType, staker)) {
+            historicalBettersIndex[fixtureID][betType][
+                staker
+            ] = historicalBetters[fixtureID][betType].length;
+            historicalBetters[fixtureID][betType].push(staker);
+        }
     }
 
     function getEnrichedFixtureData(string memory fixtureID)
@@ -153,10 +203,15 @@ contract SportsBetting is SportsOracleConsumer {
     {
         bettingState[fixtureID] = state;
         emit BettingStateChanged(fixtureID, state);
+
+        // If we open a fixture, intialize ctx state vars
+        if (state == BettingState.OPEN) {
+            initializeHistoricalBetters(fixtureID);
+        }
         // EDGE CASE: We close betting for a fixture that has bets placed, i.e. in the case
         // of a postponed fixture or an errant opening
         // We need to pay back the betters who placed bets
-        if (state == BettingState.CLOSED) {
+        else if (state == BettingState.CLOSED) {
             handleClosingBetsForFixture(fixtureID);
         }
     }
@@ -281,8 +336,9 @@ contract SportsBetting is SportsOracleConsumer {
             "Bet activity is not open."
         );
         require(msg.value >= entranceFee, "Amount is below entrance fee.");
+
         amounts[fixtureID][betType][msg.sender] += msg.value;
-        historicalBetters[fixtureID][betType].push(msg.sender);
+        addHistoricalBetter(fixtureID, betType, msg.sender);
         activeBetters[fixtureID][betType][msg.sender] = true;
         emit BetStaked(msg.sender, fixtureID, msg.value, betType);
     }

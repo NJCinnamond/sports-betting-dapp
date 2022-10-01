@@ -298,7 +298,8 @@ describe("Sports Betting contract", function () {
       expect(await SportsBetting.amounts(dummyFixtureID, betTypeHome, addr1.address))
         .to.equal(stakeAmount);
 
-      expect(await SportsBetting.historicalBetters(dummyFixtureID, betTypeHome, 0))
+      // 0 because first index is reserved for null address
+      expect(await SportsBetting.historicalBetters(dummyFixtureID, betTypeHome, 1))
         .to.equal(addr1.address);
 
       expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeHome, addr1.address))
@@ -622,17 +623,20 @@ describe("Sports Betting contract", function () {
       const addr3BetAmount = ethers.utils.parseUnits("3", 18);
       // Addr4 bets on HOME with 8 ETH
       const addr4BetAmount = ethers.utils.parseUnits("4", 18);
+      // Addr1 bets on HOME again with 3 ETH
+      const addr1SecondBetAmount = ethers.utils.parseUnits("3", 18);
 
       // Place bets
       await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetAmount });
       await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, { value: addr2BetAmount });
       await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeDraw, { value: addr3BetAmount });
       await SportsBetting.connect(addr4).stake(dummyFixtureID, betTypeHome, { value: addr4BetAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1SecondBetAmount });
 
       // HOME win and DRAW
       const outcomes = [betTypeHome, betTypeDraw];
-      // Expected = 2 + 3 + 4 = 9 ETH
-      const expected = ethers.utils.parseUnits("9", 18);
+      // Expected = 2 + 3 + 4 + 3 = 12 ETH
+      const expected = ethers.utils.parseUnits("12", 18);
 
       expect(await SportsBetting.callStatic.getTotalAmountBetOnFixtureOutcomesTest(dummyFixtureID, outcomes))
         .to.equal(expected);
