@@ -816,7 +816,7 @@ describe("Sports Betting contract", function () {
     });
   });
 
-  describe("getStakeSummaryForUser", function () {
+  describe("getEnrichedFixtureData", function () {
     it("Should return correct enrichment with multiple stakers", async function () {
       const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
 
@@ -846,7 +846,7 @@ describe("Sports Betting contract", function () {
       await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, { value: addr2BetAwayAmount });
 
       // ACT: Addr1 calls getEnrichedFixtureData
-      const result = await SportsBetting.connect(addr1).callStatic.getEnrichedFixtureData(dummyFixtureID);
+      const result = await SportsBetting.callStatic.getEnrichedFixtureData(dummyFixtureID, addr1.address);
 
       // ASSERT
       // Fixture state should be open

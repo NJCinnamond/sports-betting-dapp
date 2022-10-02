@@ -21,16 +21,10 @@ contract SportsBetting is SportsOracleConsumer {
         FULFILLED
     }
 
-    struct StakeSummary {
-        uint256 home;
-        uint256 draw;
-        uint256 away;
-    }
-
     struct FixtureEnrichment {
         BettingState fixtureState;
-        StakeSummary total;
-        StakeSummary user;
+        uint256[3] total;
+        uint256[3] user;
     }
 
     event BettingStateChanged(string fixtureID, BettingState state);
@@ -160,41 +154,33 @@ contract SportsBetting is SportsOracleConsumer {
         }
     }
 
-    function getEnrichedFixtureData(string memory fixtureID)
+    function getEnrichedFixtureData(string memory fixtureID, address user)
         public
+        view
         returns (FixtureEnrichment memory)
     {
         return
             FixtureEnrichment({
                 fixtureState: bettingState[fixtureID],
-                user: getStakeSummaryForUser(fixtureID, msg.sender),
-                total: StakeSummary({
-                    home: getTotalAmountBetOnFixtureOutcome(
-                        fixtureID,
-                        BetType.HOME
-                    ),
-                    draw: getTotalAmountBetOnFixtureOutcome(
-                        fixtureID,
-                        BetType.DRAW
-                    ),
-                    away: getTotalAmountBetOnFixtureOutcome(
-                        fixtureID,
-                        BetType.AWAY
-                    )
-                })
+                user: getStakeSummaryForUser(fixtureID, user),
+                total: [
+                    getTotalAmountBetOnFixtureOutcome(fixtureID, BetType.HOME),
+                    getTotalAmountBetOnFixtureOutcome(fixtureID, BetType.DRAW),
+                    getTotalAmountBetOnFixtureOutcome(fixtureID, BetType.AWAY)
+                ]
             });
     }
 
     function getStakeSummaryForUser(string memory fixtureID, address user)
         internal
-        returns (StakeSummary memory)
+        view
+        returns (uint256[3] memory)
     {
-        return
-            StakeSummary({
-                home: amounts[fixtureID][BetType.HOME][user],
-                draw: amounts[fixtureID][BetType.DRAW][user],
-                away: amounts[fixtureID][BetType.AWAY][user]
-            });
+        return [
+            amounts[fixtureID][BetType.HOME][user],
+            amounts[fixtureID][BetType.DRAW][user],
+            amounts[fixtureID][BetType.AWAY][user]
+        ];
     }
 
     // Wrapper for setting fixture betting state and emitting event

@@ -33,7 +33,7 @@ contract SportsBettingTest is SportsBetting {
 
     function getStakeSummaryForUserTest(string memory fixtureID, address user)
         public
-        returns (StakeSummary memory)
+        returns (uint256[3] memory)
     {
         return getStakeSummaryForUser(fixtureID, user);
     }
