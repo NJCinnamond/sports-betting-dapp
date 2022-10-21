@@ -2,6 +2,7 @@
 pragma solidity ^0.8.12;
 
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
+import "hardhat/console.sol";
 
 /**
  * Request testnet LINK and ETH here: https://faucets.chain.link/
@@ -21,6 +22,8 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
 
     // multiple params returned in a single oracle response
     string public fixtureResult;
+
+    mapping(address => uint256) public userToLink;
 
     event RequestedFixtureKickoff(bytes32 indexed requestId, string fixtureID);
 
@@ -128,15 +131,25 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         internal
         virtual;
 
+    // Anybody can transfer LINK to ctx
+    function transferLink(uint256 amount) public {
+        LinkTokenInterface link = LinkTokenInterface(chainlinkTokenAddress());
+        require(
+            link.transferFrom(msg.sender, address(this), amount),
+            "Unable to transfer"
+        );
+
+        userToLink[msg.sender] += amount;
+    }
+
     /**
      * Allow withdraw of Link tokens from the contract
      */
-    function withdrawLink() public {
-        require(msg.sender == owner, "Only owner can withdraw LINK");
+    function withdrawLink(uint256 amount) public {
+        require(amount <= userToLink[msg.sender], "You don't have enough link");
+        userToLink[msg.sender] -= amount;
+
         LinkTokenInterface link = LinkTokenInterface(chainlinkTokenAddress());
-        require(
-            link.transfer(msg.sender, link.balanceOf(address(this))),
-            "Unable to transfer"
-        );
+        require(link.transfer(msg.sender, amount), "Unable to transfer");
     }
 }

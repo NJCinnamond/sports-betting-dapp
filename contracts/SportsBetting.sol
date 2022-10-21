@@ -1,7 +1,6 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.12;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
 import "./SportsOracleConsumer.sol";
 import "hardhat/console.sol";
 
@@ -367,7 +366,7 @@ contract SportsBetting is SportsOracleConsumer {
         emit BetUnstaked(staker, fixtureID, amount, betType);
     }
 
-    function requestFixtureKickoffTime(string memory fixtureID) internal {
+    function requestFixtureKickoffTime(string memory fixtureID) public {
         bytes32 requestID = requestFixtureKickoffTimeParameter(fixtureID);
         requestKickoffToFixture[requestID] = fixtureID;
         emit RequestedFixtureKickoff(requestID, fixtureID);
@@ -391,7 +390,7 @@ contract SportsBetting is SportsOracleConsumer {
         }
     }
 
-    function requestFixtureResult(string memory fixtureID) internal {
+    function requestFixtureResult(string memory fixtureID) public {
         bytes32 requestID = requestFixtureResultParameter(fixtureID);
         requestResultToFixture[requestID] = fixtureID;
         emit RequestedFixtureResult(requestID, fixtureID);
@@ -464,14 +463,6 @@ contract SportsBetting is SportsOracleConsumer {
         );
         emit BetPayoutFulfillmentError(fixtureID, errorString);
         revert(errorString);
-    }
-
-    function strEqual(string memory a, string memory b)
-        private
-        pure
-        returns (bool)
-    {
-        return keccak256(abi.encodePacked(a)) == keccak256(abi.encodePacked(b));
     }
 
     function getLosingFixtureOutcomes(BetType outcome)

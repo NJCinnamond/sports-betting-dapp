@@ -16,11 +16,14 @@ const betTypeHome = 0;
 const betTypeDraw = 1;
 const betTypeAway = 2;
 
+// Unix timestamp 1 day from now
+const unixTomorrow = Math.round((new Date(Date.now() + 24 * 60 * 60 * 1000)).getTime() / 1000);
+
 describe("Sports Betting contract", function () {
   async function deploySportsBettingFixture() {
     const [deployerOfContract] = provider.getWallets();
 
-    const LinkToken = require('../artifacts/contracts/mock/LinkToken.sol/LinkToken.json');
+    const LinkToken = require('../artifacts/contracts/mock/LinkTokenInterface.sol/LinkTokenInterface.json');
     const mockLinkToken = await deployMockContract(deployerOfContract, LinkToken.abi);
 
     // Get the SportsBetting contract and Signers
@@ -38,7 +41,7 @@ describe("Sports Betting contract", function () {
     );
     await SportsBetting.deployed();
 
-    return { SportsBettingFactory, SportsBetting, owner, addr1, addr2, addr3, addr4 }
+    return { SportsBettingFactory, SportsBetting, mockLinkToken, owner, addr1, addr2, addr3, addr4 }
   }
 
   describe("Deployment", function () {
@@ -329,7 +332,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       const amountBelowEntranceFee = 1;
 
@@ -344,7 +347,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // Stake 1 ETH
       const stakeAmount = ethers.utils.parseUnits("5", 18);
@@ -399,7 +402,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // Dummy unstake amount
       const unstakeAmount = ethers.utils.parseUnits("5", 16);
@@ -415,7 +418,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // ACT
       // Stake 1 ETH
@@ -446,7 +449,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // ACT
       // Stake 1 ETH
@@ -551,7 +554,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // Addr1 bets on correct result (HOME) with 2 ETH
       const addr1BetAmount = ethers.utils.parseUnits("2", 18);
@@ -592,7 +595,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // Addr1 bets on correct result (HOME) with 2 ETH
       const addr1BetAmount = ethers.utils.parseUnits("2", 18);
@@ -648,7 +651,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetAmount = ethers.utils.parseUnits("2", 18);
@@ -672,7 +675,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetAmount = ethers.utils.parseUnits("2", 18);
@@ -762,7 +765,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
@@ -788,7 +791,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
@@ -823,7 +826,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
@@ -869,7 +872,7 @@ describe("Sports Betting contract", function () {
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
-      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, 1664686800);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
       // Addr1 bets on HOME with 2 ETH
       const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
@@ -917,6 +920,120 @@ describe("Sports Betting contract", function () {
         .to.equal(false);
       expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeDraw, addr2.address))
         .to.equal(false);
+    });
+  });
+
+  describe("transferLink", function () {
+    it("Should update userToLink var", async function () {
+      const { SportsBetting, addr1, addr2, mockLinkToken } = await loadFixture(deploySportsBettingFixture);
+
+      // Addr1 transfers 1 LINK
+      const addr1FirstTransferAmount = ethers.utils.parseUnits("1", 18);
+
+      // Initialize mock
+      await mockLinkToken.mock.transferFrom.returns(true);
+
+      // Act
+      await SportsBetting.connect(addr1).transferLink(addr1FirstTransferAmount);
+
+      // Assert
+      expect(await SportsBetting.userToLink(addr1.address))
+        .to.equal(addr1FirstTransferAmount);
+
+      // Addr1 transfers 2 more LINK. Addr2 transfers 4 LINK
+      const addr1SecondTransferAmount = ethers.utils.parseUnits("2", 18);
+      const addr1TotalTransferAmount = ethers.utils.parseUnits("3", 18);
+      const addr2FirstTransferAmount = ethers.utils.parseUnits("4", 18);
+
+      // Act
+      await SportsBetting.connect(addr1).transferLink(addr1SecondTransferAmount);
+      await SportsBetting.connect(addr2).transferLink(addr2FirstTransferAmount);
+
+      // Assert
+      expect(await SportsBetting.userToLink(addr1.address))
+        .to.equal(addr1TotalTransferAmount);
+      expect(await SportsBetting.userToLink(addr2.address))
+        .to.equal(addr2FirstTransferAmount);
+    });
+
+    it("Should revert if transferFrom fails", async function () {
+      const { SportsBetting, addr1, mockLinkToken } = await loadFixture(deploySportsBettingFixture);
+
+      // Addr1 transfers 1 LINK
+      const addr1FirstTransferAmount = ethers.utils.parseUnits("1", 18);
+
+      // Initialize mock
+      await mockLinkToken.mock.transferFrom.returns(false);
+
+      // Act & Assert
+      await expect(SportsBetting.connect(addr1).transferLink(addr1FirstTransferAmount))
+        .to.be.revertedWith("Unable to transfer");
+    });
+  });
+
+  describe("withdrawLink", function () {
+    it("Should update userToLink var", async function () {
+      const { SportsBetting, addr1, addr2, mockLinkToken } = await loadFixture(deploySportsBettingFixture);
+
+      // Addr1 transfers 2 LINK
+      const addr1TransferAmount = ethers.utils.parseUnits("2", 18);
+
+      // Initialize mock and transfer
+      await mockLinkToken.mock.transferFrom.returns(true);
+      await SportsBetting.connect(addr1).transferLink(addr1TransferAmount);
+
+      // Addr1 tries to withdraw 1 LINK 
+      const addr1WithdrawalAmount = ethers.utils.parseUnits("1", 18);
+
+      // Initialize mock
+      await mockLinkToken.mock.transfer.returns(true);
+
+      // Act
+      await SportsBetting.connect(addr1).withdrawLink(addr1WithdrawalAmount);
+
+      // Assert
+      const expectedAddr1Link = ethers.utils.parseUnits("1", 18);
+      expect(await SportsBetting.userToLink(addr1.address))
+        .to.equal(expectedAddr1Link);
+    });
+
+    it("Should revert if user does not have enough LINK in ctx", async function () {
+      const { SportsBetting, addr1, addr2, mockLinkToken } = await loadFixture(deploySportsBettingFixture);
+
+      // Addr1 transfers 1 LINK
+      const addr1TransferAmount = ethers.utils.parseUnits("1", 18);
+
+      // Initialize mock and transfer link
+      await mockLinkToken.mock.transferFrom.returns(true);
+      await SportsBetting.connect(addr1).transferLink(addr1TransferAmount);
+
+      // Addr1 tries to withdraw 2 LINK 
+      const addr1WithdrawalAmount = ethers.utils.parseUnits("2", 18);
+
+      // Assert
+      await expect(SportsBetting.connect(addr1).withdrawLink(addr1WithdrawalAmount))
+        .to.be.revertedWith("You don't have enough link");
+    });
+
+    it("Should revert if transfer fails", async function () {
+      const { SportsBetting, addr1, mockLinkToken } = await loadFixture(deploySportsBettingFixture);
+
+      // Addr1 transfers 1 LINK
+      const addr1TransferAmount = ethers.utils.parseUnits("1", 18);
+
+      // Initialize mock and transfer link
+      await mockLinkToken.mock.transferFrom.returns(true);
+      await SportsBetting.connect(addr1).transferLink(addr1TransferAmount);
+
+      // Addr1 withdraws 1 LINK
+      const addr1WithdrawalAmount = ethers.utils.parseUnits("1", 18);
+
+      // Initialize mock
+      await mockLinkToken.mock.transfer.returns(false);
+
+      // Act & Assert
+      await expect(SportsBetting.connect(addr1).withdrawLink(addr1WithdrawalAmount))
+        .to.be.revertedWith("Unable to transfer");
     });
   });
 });
