@@ -3,6 +3,13 @@ import { formatBytes32String } from "ethers/lib/utils";
 import { ethers, network, waffle } from "hardhat";
 const { deployMockContract, provider } = waffle;
 
+const chai = require('chai')
+const sinon = require('sinon')
+const sinonChai = require('sinon-chai')
+const { smock } = require('@defi-wonderland/smock')
+const expect = chai.expect
+chai.use(smock.matchers)
+
 const { loadFixture } = require("@nomicfoundation/hardhat-network-helpers");
 
 // Contract enums
@@ -920,6 +927,102 @@ describe("Sports Betting contract", function () {
         .to.equal(false);
       expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeDraw, addr2.address))
         .to.equal(false);
+    });
+  });
+
+  describe("removeStakeState", function () {
+    it("Should correctly amend betting states for staker for partial unstake", async function () {
+      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
+
+      // Addr1 bets on HOME with 2 ETH
+      const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
+      // Wants to remove 1 ETH of stake
+      const addr1UnstakeAmount = ethers.utils.parseUnits("1", 18);
+      // Remaining bet should be 1 ETH
+      const addr1FinalStakeAmount = ethers.utils.parseUnits("1", 18);
+
+      // ACT: Place bets
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
+
+      // ASSERT
+      await SportsBetting.removeStakeStateTest(dummyFixtureID, betTypeHome, addr1UnstakeAmount, addr1.address);
+
+      // Expect the new stake amount to equal zero for both addresses
+      expect(await SportsBetting.amounts(dummyFixtureID, betTypeHome, addr1.address))
+        .to.equal(addr1FinalStakeAmount);
+
+      // Expect addr1 and addr2 to not be active betters
+      expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeHome, addr1.address))
+        .to.equal(true);
+    });
+
+    it("Should correctly amend betting states for staker for full unstake", async function () {
+      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
+
+      // Addr1 bets on HOME with 2 ETH
+      const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
+
+      // ACT: Place bets
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
+
+      // ASSERT
+      // UNSTAKE FULL AMOUNT
+      await SportsBetting.removeStakeStateTest(dummyFixtureID, betTypeHome, addr1BetHomeAmount, addr1.address);
+
+      // Expect the new stake amount to equal zero for both addresses
+      expect(await SportsBetting.amounts(dummyFixtureID, betTypeHome, addr1.address))
+        .to.equal(0);
+
+      // Expect addr1 and addr2 to not be active betters
+      expect(await SportsBetting.activeBetters(dummyFixtureID, betTypeHome, addr1.address))
+        .to.equal(false);
+    });
+
+    it("Should revert if no stake for staker on result", async function () {
+      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
+
+      // Addr1 tries to unstake 2 ETH without an existing stake
+      const addr1UnstakeAmount = ethers.utils.parseUnits("2", 18);
+
+      // ASSERT
+      await expect(SportsBetting.removeStakeStateTest(dummyFixtureID, betTypeHome, addr1UnstakeAmount, addr1.address))
+        .to.be.revertedWith("No stake on this address-result.");
+    });
+
+    it("Should revert if unstake amount exceeds stake", async function () {
+      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
+
+      // Addr1 bets on HOME with 2 ETH
+      const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
+      // Addr1 tries to unstake 3 ETH
+      const addr1UnstakeAmount = ethers.utils.parseUnits("3", 18);
+
+      // ACT: Place bets
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
+
+      // ASSERT
+      await expect(SportsBetting.removeStakeStateTest(dummyFixtureID, betTypeHome, addr1UnstakeAmount, addr1.address))
+        .to.be.revertedWith("Current stake too low.");
     });
   });
 

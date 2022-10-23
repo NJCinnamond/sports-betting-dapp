@@ -71,13 +71,22 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         owner = payable(msg.sender);
     }
 
+    modifier hasLinkFee() {
+        require(userToLink[msg.sender] > fee, "You haven't sent enough LINK.");
+        _;
+    }
+
     /**
      * @notice Request fixture kickoff time from the oracle in a single transaction
      */
     function requestFixtureKickoffTimeParameter(string memory fixtureID)
         public
+        hasLinkFee
         returns (bytes32)
     {
+        // User spends LINK value = fee on this request
+        userToLink[msg.sender] -= fee;
+
         Chainlink.Request memory req = buildChainlinkRequest(
             jobId,
             address(this),
@@ -106,8 +115,12 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
      */
     function requestFixtureResultParameter(string memory fixtureID)
         public
+        hasLinkFee
         returns (bytes32)
     {
+        // User spends LINK value = fee on this request
+        userToLink[msg.sender] -= fee;
+
         Chainlink.Request memory req = buildChainlinkRequest(
             jobId,
             address(this),

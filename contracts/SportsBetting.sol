@@ -350,6 +350,17 @@ contract SportsBetting is SportsOracleConsumer {
         uint256 amount,
         address staker
     ) internal {
+        removeStakeState(fixtureID, betType, amount, staker);
+        payable(staker).transfer(amount);
+        emit BetUnstaked(staker, fixtureID, amount, betType);
+    }
+
+    function removeStakeState(
+        string memory fixtureID,
+        BetType betType,
+        uint256 amount,
+        address staker
+    ) internal {
         uint256 amountStaked = amounts[fixtureID][betType][staker];
         require(amountStaked > 0, "No stake on this address-result.");
         require(amount <= amountStaked, "Current stake too low.");
@@ -361,9 +372,6 @@ contract SportsBetting is SportsOracleConsumer {
         if (amounts[fixtureID][betType][staker] <= 0) {
             activeBetters[fixtureID][betType][staker] = false;
         }
-
-        payable(staker).transfer(amount);
-        emit BetUnstaked(staker, fixtureID, amount, betType);
     }
 
     function requestFixtureKickoffTime(string memory fixtureID) public {
@@ -415,7 +423,7 @@ contract SportsBetting is SportsOracleConsumer {
     {
         BetType result = getFixtureResultFromAPIResponse(fixtureID, _result);
 
-        BetType[] memory winningOutcomes;
+        BetType[] memory winningOutcomes = new BetType[](1);
         winningOutcomes[0] = result;
 
         BetType[] memory losingOutcomes = getLosingFixtureOutcomes(result);
@@ -438,6 +446,10 @@ contract SportsBetting is SportsOracleConsumer {
             winningAmount,
             totalAmount
         );
+
+        // Undo stake states for losing outcomes
+        // Winning outcomes are removed in payout flow to prevent re-entrance attack
+        handleRemovingStakesForBetTypes(fixtureID, losingOutcomes);
     }
 
     function getFixtureResultFromAPIResponse(
@@ -535,10 +547,35 @@ contract SportsBetting is SportsOracleConsumer {
                     (totalAmount / winningAmount);
                 obligations[fixtureID][better] = betterObligation;
 
-                amounts[fixtureID][result][better] = 0;
-                activeBetters[fixtureID][result][better] = false;
+                removeStakeState(fixtureID, result, betterAmount, better);
                 payable(better).transfer(betterObligation);
                 emit BetPayout(better, fixtureID, betterObligation);
+            }
+        }
+    }
+
+    function handleRemovingStakesForBetTypes(
+        string memory fixtureID,
+        BetType[] memory betTypes
+    ) internal {
+        for (uint256 i = 0; i < betTypes.length; i++) {
+            handleRemovingStakesForBetType(fixtureID, betTypes[i]);
+        }
+    }
+
+    function handleRemovingStakesForBetType(
+        string memory fixtureID,
+        BetType betType
+    ) internal {
+        for (
+            uint256 i = 0;
+            i < historicalBetters[fixtureID][betType].length;
+            i++
+        ) {
+            address better = historicalBetters[fixtureID][betType][i];
+            if (activeBetters[fixtureID][betType][better]) {
+                uint256 betterAmount = amounts[fixtureID][betType][better];
+                removeStakeState(fixtureID, betType, betterAmount, better);
             }
         }
     }

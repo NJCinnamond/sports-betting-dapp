@@ -95,4 +95,19 @@ contract SportsBettingTest is SportsBetting {
     ) public returns (BetType) {
         return getFixtureResultFromAPIResponse(fixtureID, _result);
     }
+
+    function updateFixtureResultTest(string memory fixtureID, uint256 _result)
+        public
+    {
+        updateFixtureResult(fixtureID, _result);
+    }
+
+    function removeStakeStateTest(
+        string memory fixtureID,
+        BetType betType,
+        uint256 amount,
+        address staker
+    ) public {
+        removeStakeState(fixtureID, betType, amount, staker);
+    }
 }
