@@ -9,8 +9,18 @@ contract SportsBettingTest is SportsBetting {
         address _oracle,
         address _link,
         bytes32 _jobId,
-        uint256 _fee
-    ) SportsBetting(_sportsOracleURI, _oracle, _link, _jobId, _fee) {}
+        uint256 _fee,
+        uint256 _commissionRate
+    )
+        SportsBetting(
+            _sportsOracleURI,
+            _oracle,
+            _link,
+            _jobId,
+            _fee,
+            _commissionRate
+        )
+    {}
 
     function initializeHistoricalBettersTest(string memory fixtureID) public {
         initializeHistoricalBetters(fixtureID);

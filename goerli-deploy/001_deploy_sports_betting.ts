@@ -14,6 +14,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     const goerliLinkAddress = "0x326C977E6efc84E512bB9C30f76E30c160eD06FB";
     const goerliOracleJobID = ethers.utils.hexlify(ethers.utils.toUtf8Bytes("ca98366cc7314957b8c012c72f05aeeb"));
     const goerliOracleRequestFee = BigNumber.from("100000000000000000"); // 0.1 LINK
+    const commissionRate = 0.01;
 
     await deploy('SportsBetting', {
         from: deployer,
@@ -22,7 +23,8 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
             goerliOracleOperatorCtx,
             goerliLinkAddress,
             goerliOracleJobID,
-            goerliOracleRequestFee
+            goerliOracleRequestFee,
+            commissionRate
         ],
         log: true,
         autoMine: true, // speed up deployment on local network (ganache, hardhat), no effect on live networks

@@ -12,8 +12,6 @@ import "hardhat/console.sol";
 abstract contract SportsOracleConsumer is ChainlinkClient {
     using Chainlink for Chainlink.Request;
 
-    address payable public owner;
-
     address public chainlink;
     string public sportsOracleURI;
 
@@ -66,9 +64,6 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         //jobId = _jobId;
         jobId = "ca98366cc7314957b8c012c72f05aeeb";
         fee = _fee;
-
-        // Set owner
-        owner = payable(msg.sender);
     }
 
     modifier hasLinkFee() {

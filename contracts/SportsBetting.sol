@@ -50,8 +50,17 @@ contract SportsBetting is SportsOracleConsumer {
 
     BetType[3] public betTypes;
 
+    // Contract owner
+    address public owner;
+
     // Entrance fee of 0.0001 Eth (10^14 Wei)
     uint256 public entranceFee = 10**14;
+
+    // Commission rate taken by contract owner for each payout as a percentage
+    uint256 public commissionRate;
+
+    // Commission total taken by contract owner indexed by fixture
+    mapping(string => uint256) public commissionMap;
 
     // Max time before a fixture kick-off that a bet can be placed in seconds
     // A fixture bet state will not move to OPEN before a time to the left of the
@@ -103,11 +112,15 @@ contract SportsBetting is SportsOracleConsumer {
         address _oracle,
         address _link,
         bytes32 _jobId,
-        uint256 _fee
+        uint256 _fee,
+        uint256 _commissionRate
     ) SportsOracleConsumer(_sportsOracleURI, _oracle, _link, _jobId, _fee) {
         betTypes[0] = BetType.HOME;
         betTypes[1] = BetType.DRAW;
         betTypes[2] = BetType.AWAY;
+
+        owner = msg.sender;
+        commissionRate = _commissionRate;
     }
 
     function initializeHistoricalBetters(string memory fixtureID) internal {
@@ -532,7 +545,7 @@ contract SportsBetting is SportsOracleConsumer {
         uint256 totalAmount
     ) internal {
         if (bettingState[fixtureID] != BettingState.FULFILLING) {
-            revert("Fixture bet state is not FULFILLING.");
+            revert("Bet state not FULFILLING.");
         }
 
         for (
@@ -543,15 +556,26 @@ contract SportsBetting is SportsOracleConsumer {
             address better = historicalBetters[fixtureID][result][i];
             if (activeBetters[fixtureID][result][better]) {
                 uint256 betterAmount = amounts[fixtureID][result][better];
+                removeStakeState(fixtureID, result, betterAmount, better);
+
+                // Calculate better's share of winnings
                 uint256 betterObligation = betterAmount *
                     (totalAmount / winningAmount);
-                obligations[fixtureID][better] = betterObligation;
 
-                removeStakeState(fixtureID, result, betterAmount, better);
+                // Handle commission
+                uint256 commission = (betterObligation * commissionRate) / 100;
+                commissionMap[fixtureID] += commission;
+                betterObligation -= commission;
+
+                // Pay better
                 payable(better).transfer(betterObligation);
                 emit BetPayout(better, fixtureID, betterObligation);
             }
         }
+
+        // Pay commission to owner
+        payable(owner).transfer(commissionMap[fixtureID]);
+        emit BetPayout(owner, fixtureID, commissionMap[fixtureID]);
     }
 
     function handleRemovingStakesForBetTypes(

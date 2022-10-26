@@ -23,6 +23,8 @@ const betTypeHome = 0;
 const betTypeDraw = 1;
 const betTypeAway = 2;
 
+const commissionRate = 1;
+
 // Unix timestamp 1 day from now
 const unixTomorrow = Math.round((new Date(Date.now() + 24 * 60 * 60 * 1000)).getTime() / 1000);
 
@@ -44,7 +46,8 @@ describe("Sports Betting contract", function () {
       '0x74EcC8Bdeb76F2C6760eD2dc8A46ca5e581fA656', // Chainlink DevRel
       mockLinkToken.address,
       formatBytes32String('example'),
-      linkFee
+      linkFee,
+      commissionRate
     );
     await SportsBetting.deployed();
 
@@ -552,11 +555,11 @@ describe("Sports Betting contract", function () {
 
       // ACT & ASSERT
       await expect(SportsBetting.fulfillFixturePayoutObligationsTest(dummyFixtureID, betTypeHome, winningAmount, totalAmount))
-        .to.be.revertedWith("Fixture bet state is not FULFILLING.");
+        .to.be.revertedWith("Bet state not FULFILLING.");
     });
 
     it("Should update ctx variables and balances correctly", async function () {
-      const { SportsBetting, addr1, addr2, addr3 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, owner, addr1, addr2, addr3 } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -581,10 +584,14 @@ describe("Sports Betting contract", function () {
       const totalAmount = ethers.utils.parseUnits("9", 18);
 
       // Expectations:
-      // Addr1 paid out with (2/3) * 9 = 6 ETH
+      // Addr1 obligation is (2/3) * 9 = 6 ETH
+      // COMMISSION: Owner keeps 1% = 0.06 ETH. => Addr payout is 5.94 ETH
+      const addr1ExpectedPayout = ethers.utils.parseUnits("5.94", 18);
       // Addr2 paid out with (1/3) * 9 = 3 ETH
-      const addr1ExpectedPayout = ethers.utils.parseUnits("6", 18);
-      const addr2ExpectedPayout = ethers.utils.parseUnits("3", 18);
+      // COMMISSION: Owner keeps 1% = 0.03 ETH. => Addr payout is 2.97 ETH
+      const addr2ExpectedPayout = ethers.utils.parseUnits("2.97", 18);
+      // => total commission is 0.09 ETH
+      const ownerExpectedPayout = ethers.utils.parseUnits("0.09", 18);
 
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateFulfilling);
 
@@ -593,11 +600,13 @@ describe("Sports Betting contract", function () {
         .to.emit(SportsBetting, "BetPayout")
         .withArgs(addr1.address, dummyFixtureID, addr1ExpectedPayout)
         .to.emit(SportsBetting, "BetPayout")
-        .withArgs(addr2.address, dummyFixtureID, addr2ExpectedPayout);
+        .withArgs(addr2.address, dummyFixtureID, addr2ExpectedPayout)
+        .to.emit(SportsBetting, "BetPayout")
+        .withArgs(owner.address, dummyFixtureID, ownerExpectedPayout);
     });
 
     it("Should update ctx variables and balances correctly with unstake", async function () {
-      const { SportsBetting, addr1, addr2, addr3 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, owner, addr1, addr2, addr3 } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -625,15 +634,20 @@ describe("Sports Betting contract", function () {
       const totalAmount = ethers.utils.parseUnits("8", 18);
 
       // Expectations:
-      // Addr1 paid out with 8 ETH
-      const addr1ExpectedPayout = ethers.utils.parseUnits("8", 18);
+      // Addr1 obligation is 8 ETH
+      // COMMISSION: Owner keeps 1% = 0.08 ETH. => Addr payout is 7.92 ETH
+      const addr1ExpectedPayout = ethers.utils.parseUnits("7.92", 18);
+      // Owner obligation is 0.08 ETH
+      const ownerExpectedPayout = ethers.utils.parseUnits("0.08", 18);
 
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateFulfilling);
 
       // ACT & ASSERT
       await expect(SportsBetting.fulfillFixturePayoutObligationsTest(dummyFixtureID, betTypeHome, winningAmount, totalAmount))
         .to.emit(SportsBetting, "BetPayout")
-        .withArgs(addr1.address, dummyFixtureID, addr1ExpectedPayout);
+        .withArgs(addr1.address, dummyFixtureID, addr1ExpectedPayout)
+        .to.emit(SportsBetting, "BetPayout")
+        .withArgs(owner.address, dummyFixtureID, ownerExpectedPayout);
     });
   });
 
