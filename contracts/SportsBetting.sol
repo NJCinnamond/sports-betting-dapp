@@ -92,8 +92,8 @@ contract SportsBetting is SportsOracleConsumer {
     mapping(string => mapping(BetType => mapping(address => uint256)))
         public amounts;
 
-    // Map each fixture ID to a map of address to amount we owe the address owner
-    mapping(string => mapping(address => uint256)) public obligations;
+    // Map each fixture ID to a map of address to amount the ctx paid the address owner for that fixture
+    mapping(string => mapping(address => uint256)) public payouts;
 
     // Map each fixture ID to whether betting is open for this fixture
     mapping(string => BettingState) public bettingState;
@@ -568,12 +568,14 @@ contract SportsBetting is SportsOracleConsumer {
                 betterObligation -= commission;
 
                 // Pay better
+                payouts[fixtureID][better] = betterObligation;
                 payable(better).transfer(betterObligation);
                 emit BetPayout(better, fixtureID, betterObligation);
             }
         }
 
         // Pay commission to owner
+        payouts[fixtureID][owner] += commissionMap[fixtureID];
         payable(owner).transfer(commissionMap[fixtureID]);
         emit BetPayout(owner, fixtureID, commissionMap[fixtureID]);
     }
