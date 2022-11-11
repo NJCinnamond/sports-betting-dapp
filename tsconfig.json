@@ -10,7 +10,8 @@
   "include": [
     "./hardhat.config.ts",
     "./scripts",
-    "./goerli-deploy",
+    "deploy/goerli-deploy",
+    "deploy/arbitrum-goerli-deploy",
     "./test",
     "./typechain"
   ],

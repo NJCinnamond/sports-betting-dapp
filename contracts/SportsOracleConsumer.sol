@@ -38,18 +38,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         string fixtureID,
         uint256 result
     );
-
-    /**
-     * @notice Initialize the link token and target oracle
-     * @dev The oracle address must be an Operator contract for multiword response
-     *
-     *
-     * Kovan Testnet details:
-     * Link Token: 0xa36085F69e2889c224210F603D836748e7dC0088
-     * Oracle: 0x74EcC8Bdeb76F2C6760eD2dc8A46ca5e581fA656 (Chainlink DevRel)
-     * jobId: 53f9755920cd451a8fe46f5087468395
-     *
-     */
+    
     constructor(
         string memory _sportsOracleURI,
         address _oracle,
@@ -62,7 +51,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         setChainlinkOracle(_oracle);
         chainlink = _oracle;
         //jobId = _jobId;
-        jobId = "ca98366cc7314957b8c012c72f05aeeb";
+        jobId = "7599d3c8f31e4ce78ad2b790cbcfc673";
         fee = _fee;
     }
 
@@ -89,7 +78,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         );
         req.add("get", string.concat(sportsOracleURI, fixtureID));
         req.add("path", "0,ko");
-        req.addInt("times", 1);
+        req.addInt("multiply", 1);
         return sendChainlinkRequest(req, fee); // MWR API.
     }
 
@@ -123,7 +112,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         );
         req.add("get", string.concat(sportsOracleURI, fixtureID));
         req.add("path", "0,result");
-        req.addInt("times", 1);
+        req.addInt("multiply", 1);
         return sendChainlinkRequest(req, fee); // MWR API.
     }
 

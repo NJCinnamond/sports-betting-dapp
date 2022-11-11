@@ -58,9 +58,14 @@ module.exports = {
       url: process.env.GOERLI_URL || "",
       accounts:
         process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
-      deploy: ['goerli-deploy/']
+      deploy: ['deploy/goerli-deploy/']
     },
-
+    arbitrumGoerli: {
+      url: process.env.ARBITRUM_GOERLI_URL || "",
+      accounts:
+        process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+      deploy: ['deploy/arbitrum-goerli-deploy/']
+    },
   },
   gasReporter: {
     enabled: process.env.REPORT_GAS !== undefined,

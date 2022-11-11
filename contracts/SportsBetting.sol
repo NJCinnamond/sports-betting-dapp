@@ -142,7 +142,7 @@ contract SportsBetting is SportsOracleConsumer {
         string memory fixtureID,
         BetType betType,
         address staker
-    ) internal returns (bool) {
+    ) internal view returns (bool) {
         // address 0x0 is not valid if pos is 0 is not in the array
         if (
             staker != address(0x0) &&
