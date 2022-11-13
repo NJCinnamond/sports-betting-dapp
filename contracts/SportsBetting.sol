@@ -325,8 +325,9 @@ contract SportsBetting is SportsOracleConsumer {
 
     function fulfillBetForFixture(string memory fixtureID) public {
         require(
-            bettingState[fixtureID] == BettingState.AWAITING,
-            "Bet state must be AWAITING."
+            bettingState[fixtureID] == BettingState.AWAITING 
+            || bettingState[fixtureID] == BettingState.FULFILLING,
+            "Bet state must be AWAITING or FULFILLING."
         );
         setFixtureBettingState(fixtureID, BettingState.FULFILLING);
         requestFixtureResult(fixtureID);
@@ -460,18 +461,20 @@ contract SportsBetting is SportsOracleConsumer {
         );
         uint256 totalAmount = winningAmount + losingAmount;
 
-        // Now we set the obligations map entry for this fixture based on above calcs and
-        // perform the payout
-        fulfillFixturePayoutObligations(
-            fixtureID,
-            result,
-            winningAmount,
-            totalAmount
-        );
-
-        // Undo stake states for losing outcomes
-        // Winning outcomes are removed in payout flow to prevent re-entrance attack
-        handleRemovingStakesForBetTypes(fixtureID, losingOutcomes);
+        // If winningAmount > 0, we have winners we can pay out to
+        if (winningAmount > 0) {
+            fulfillFixturePayoutObligations(
+                fixtureID,
+                result,
+                winningAmount,
+                totalAmount
+            );
+        } else {
+            // Else total amount is paid to owner
+            payouts[fixtureID][owner] += totalAmount;
+            payable(owner).transfer(totalAmount);
+            emit BetPayout(owner, fixtureID, totalAmount);
+        }
     }
 
     function getFixtureResultFromAPIResponse(
@@ -565,7 +568,6 @@ contract SportsBetting is SportsOracleConsumer {
             address better = historicalBetters[fixtureID][result][i];
             if (activeBetters[fixtureID][result][better]) {
                 uint256 betterAmount = amounts[fixtureID][result][better];
-                removeStakeState(fixtureID, result, betterAmount, better);
 
                 // Calculate better's share of winnings
                 uint256 betterObligation = betterAmount *
@@ -587,32 +589,6 @@ contract SportsBetting is SportsOracleConsumer {
         payouts[fixtureID][owner] += commissionMap[fixtureID];
         payable(owner).transfer(commissionMap[fixtureID]);
         emit BetPayout(owner, fixtureID, commissionMap[fixtureID]);
-    }
-
-    function handleRemovingStakesForBetTypes(
-        string memory fixtureID,
-        BetType[] memory types
-    ) internal {
-        for (uint256 i = 0; i < types.length; i++) {
-            handleRemovingStakesForBetType(fixtureID, types[i]);
-        }
-    }
-
-    function handleRemovingStakesForBetType(
-        string memory fixtureID,
-        BetType betType
-    ) internal {
-        for (
-            uint256 i = 0;
-            i < historicalBetters[fixtureID][betType].length;
-            i++
-        ) {
-            address better = historicalBetters[fixtureID][betType][i];
-            if (activeBetters[fixtureID][betType][better]) {
-                uint256 betterAmount = amounts[fixtureID][betType][better];
-                removeStakeState(fixtureID, betType, betterAmount, better);
-            }
-        }
     }
 
     // If betting is closed but we have stakes, we pay betters back

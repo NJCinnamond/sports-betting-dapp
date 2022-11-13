@@ -1167,4 +1167,31 @@ describe("Sports Betting contract", function () {
         .to.be.revertedWith("Unable to transfer");
     });
   });
+
+  describe("updateFixtureResult", function () {
+    it("Should sent total amount to owner if no bets placed on winning result", async function () {
+      const { SportsBetting, owner, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
+      await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
+
+      // Addr1 stakes 5 ETH ON HOME
+      const addr1StakeAmount = ethers.utils.parseUnits("5", 18);
+      SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1StakeAmount });
+
+      // Addr2 stakes 3 ETH ON DRAW
+      const addr2StakeAmount = ethers.utils.parseUnits("3", 18);
+      SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeDraw, { value: addr2StakeAmount });
+
+      const totalStakeAmount = ethers.utils.parseUnits("8", 18);
+
+      // ACT & ASSERT
+      // AWAY wins so we expect owner to be paid out with full stake amount
+      await expect(SportsBetting.connect(addr1).updateFixtureResultTest(dummyFixtureID, betTypeAway))
+        .to.emit(SportsBetting, "BetPayout")
+        .withArgs(owner.address, dummyFixtureID, totalStakeAmount);
+    });
+  });
 });
