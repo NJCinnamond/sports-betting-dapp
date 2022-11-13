@@ -5,7 +5,11 @@ import "./SportsOracleConsumer.sol";
 import "hardhat/console.sol";
 
 contract SportsBetting is SportsOracleConsumer {
+    // Define DEFAULT BetType = 0. 
+    // This BetType is actually invalid and acts a placeholder to catch erroneous
+    // betType entries, as Solidity interprets null values as 0.
     enum BetType {
+        DEFAULT,
         HOME,
         DRAW,
         AWAY
@@ -48,7 +52,7 @@ contract SportsBetting is SportsOracleConsumer {
 
     event KickoffTimeUpdated(string fixtureID, uint256 kickoffTime);
 
-    BetType[3] public betTypes;
+    BetType[4] public betTypes;
 
     // Contract owner
     address public owner;
@@ -115,9 +119,10 @@ contract SportsBetting is SportsOracleConsumer {
         uint256 _fee,
         uint256 _commissionRate
     ) SportsOracleConsumer(_sportsOracleURI, _oracle, _link, _jobId, _fee) {
-        betTypes[0] = BetType.HOME;
-        betTypes[1] = BetType.DRAW;
-        betTypes[2] = BetType.AWAY;
+        betTypes[0] = BetType.DEFAULT;
+        betTypes[1] = BetType.HOME;
+        betTypes[2] = BetType.DRAW;
+        betTypes[3] = BetType.AWAY;
 
         owner = msg.sender;
         commissionRate = _commissionRate;
@@ -330,6 +335,10 @@ contract SportsBetting is SportsOracleConsumer {
     function stake(string memory fixtureID, BetType betType) public payable {
         shouldHaveCorrectBettingState(fixtureID);
         require(
+            betType != BetType.DEFAULT,
+            "This BetType is not permitted."
+        );
+        require(
             bettingState[fixtureID] == BettingState.OPEN,
             "Bet activity is not open."
         );
@@ -499,7 +508,7 @@ contract SportsBetting is SportsOracleConsumer {
 
         uint256 losingOutcomesIndex = 0;
         for (uint256 i = 0; i < betTypes.length; i++) {
-            if (betTypes[i] != outcome) {
+            if (betTypes[i] != outcome && betTypes[i] != BetType.DEFAULT) {
                 losingOutcomes[losingOutcomesIndex] = betTypes[i];
                 losingOutcomesIndex += 1;
             }
@@ -582,10 +591,10 @@ contract SportsBetting is SportsOracleConsumer {
 
     function handleRemovingStakesForBetTypes(
         string memory fixtureID,
-        BetType[] memory betTypes
+        BetType[] memory types
     ) internal {
-        for (uint256 i = 0; i < betTypes.length; i++) {
-            handleRemovingStakesForBetType(fixtureID, betTypes[i]);
+        for (uint256 i = 0; i < types.length; i++) {
+            handleRemovingStakesForBetType(fixtureID, types[i]);
         }
     }
 

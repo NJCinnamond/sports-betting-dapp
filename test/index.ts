@@ -19,9 +19,9 @@ const bettingStateOpen = 2;
 const bettingStateAwaiting = 3;
 const bettingStateFulfilling = 4;
 
-const betTypeHome = 0;
-const betTypeDraw = 1;
-const betTypeAway = 2;
+const betTypeHome = 1;
+const betTypeDraw = 2;
+const betTypeAway = 3;
 
 const commissionRate = 1;
 
@@ -789,9 +789,9 @@ describe("Sports Betting contract", function () {
       const result = await SportsBetting.callStatic.getStakeSummaryForUserTest(dummyFixtureID, addr1.address);
 
       // All bet types should be zero
-      expect(result[betTypeHome].toNumber()).to.equal(0);
-      expect(result[betTypeDraw].toNumber()).to.equal(0);
-      expect(result[betTypeAway].toNumber()).to.equal(0);
+      expect(result[0].toNumber()).to.equal(0);
+      expect(result[1].toNumber()).to.equal(0);
+      expect(result[2].toNumber()).to.equal(0);
     });
 
     it("Should return correct user stake with single staker", async function () {
@@ -815,9 +815,9 @@ describe("Sports Betting contract", function () {
       const result = await SportsBetting.callStatic.getStakeSummaryForUserTest(dummyFixtureID, addr1.address);
 
       // Should match addr1 stakes only
-      expect(result[betTypeHome].toString()).to.equal(addr1BetHomeAmount);
-      expect(result[betTypeDraw].toString()).to.equal('0');
-      expect(result[betTypeAway].toString()).to.equal(addr1BetAwayAmount);
+      expect(result[0].toString()).to.equal(addr1BetHomeAmount);
+      expect(result[1].toString()).to.equal('0');
+      expect(result[2].toString()).to.equal(addr1BetAwayAmount);
     });
 
     it("Should return correct user stake with multiple stakers", async function () {
@@ -848,9 +848,9 @@ describe("Sports Betting contract", function () {
       const result = await SportsBetting.callStatic.getStakeSummaryForUserTest(dummyFixtureID, addr1.address);
 
       // Should match addr1 stakes only
-      expect(result[betTypeHome].toString()).to.equal(addr1BetHomeAmount);
-      expect(result[betTypeDraw].toString()).to.equal('0');
-      expect(result[betTypeAway].toString()).to.equal(addr1BetAwayAmount);
+      expect(result[0].toString()).to.equal(addr1BetHomeAmount);
+      expect(result[1].toString()).to.equal('0');
+      expect(result[2].toString()).to.equal(addr1BetAwayAmount);
     });
   });
 
@@ -890,13 +890,13 @@ describe("Sports Betting contract", function () {
       // Fixture state should be open
       expect(result["fixtureState"]).to.equal(bettingStateOpen);
       // User stakes should match addr1 stakes only
-      expect(result["user"][betTypeHome].toString()).to.equal(addr1BetHomeAmount);
-      expect(result["user"][betTypeDraw].toString()).to.equal('0');
-      expect(result["user"][betTypeAway].toString()).to.equal(addr1BetAwayAmount);
+      expect(result["user"][0].toString()).to.equal(addr1BetHomeAmount);
+      expect(result["user"][1].toString()).to.equal('0');
+      expect(result["user"][2].toString()).to.equal(addr1BetAwayAmount);
       // Total stakes should be a summation of addr1 and addr2 stakes
-      expect(result["total"][betTypeHome].toString()).to.equal(expectedTotalHomeAmount);
-      expect(result["total"][betTypeDraw].toString()).to.equal('0');
-      expect(result["total"][betTypeAway].toString()).to.equal(expectedTotalAwayAmount);
+      expect(result["total"][0].toString()).to.equal(expectedTotalHomeAmount);
+      expect(result["total"][1].toString()).to.equal('0');
+      expect(result["total"][2].toString()).to.equal(expectedTotalAwayAmount);
     });
   });
 
