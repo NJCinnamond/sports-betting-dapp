@@ -50,6 +50,8 @@ contract SportsBetting is SportsOracleConsumer {
 
     event BetPayout(address indexed better, string fixtureID, uint256 amount);
 
+    event BetCommissionPayout(string indexed fixtureID, uint256 amount);
+
     event KickoffTimeUpdated(string fixtureID, uint256 kickoffTime);
 
     BetType[4] public betTypes;
@@ -115,7 +117,7 @@ contract SportsBetting is SportsOracleConsumer {
         string memory _sportsOracleURI,
         address _oracle,
         address _link,
-        bytes32 _jobId,
+        string memory _jobId,
         uint256 _fee,
         uint256 _commissionRate
     ) SportsOracleConsumer(_sportsOracleURI, _oracle, _link, _jobId, _fee) {
@@ -586,9 +588,8 @@ contract SportsBetting is SportsOracleConsumer {
         }
 
         // Pay commission to owner
-        payouts[fixtureID][owner] += commissionMap[fixtureID];
         payable(owner).transfer(commissionMap[fixtureID]);
-        emit BetPayout(owner, fixtureID, commissionMap[fixtureID]);
+        emit BetCommissionPayout(fixtureID, commissionMap[fixtureID]);
     }
 
     // If betting is closed but we have stakes, we pay betters back

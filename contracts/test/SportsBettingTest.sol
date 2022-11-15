@@ -8,7 +8,7 @@ contract SportsBettingTest is SportsBetting {
         string memory _sportsOracleURI,
         address _oracle,
         address _link,
-        bytes32 _jobId,
+        string memory _jobId,
         uint256 _fee,
         uint256 _commissionRate
     )
@@ -43,6 +43,7 @@ contract SportsBettingTest is SportsBetting {
 
     function getStakeSummaryForUserTest(string memory fixtureID, address user)
         public
+        view
         returns (uint256[3] memory)
     {
         return getStakeSummaryForUser(fixtureID, user);

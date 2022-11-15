@@ -601,14 +601,14 @@ describe("Sports Betting contract", function () {
         .withArgs(addr1.address, dummyFixtureID, addr1ExpectedPayout)
         .to.emit(SportsBetting, "BetPayout")
         .withArgs(addr2.address, dummyFixtureID, addr2ExpectedPayout)
-        .to.emit(SportsBetting, "BetPayout")
-        .withArgs(owner.address, dummyFixtureID, ownerExpectedPayout);
+        .to.emit(SportsBetting, "BetCommissionPayout")
+        .withArgs(dummyFixtureID, ownerExpectedPayout);
 
       expect(await SportsBetting.callStatic.payouts(dummyFixtureID, addr1.address))
         .to.equal(addr1ExpectedPayout);
       expect(await SportsBetting.callStatic.payouts(dummyFixtureID, addr2.address))
         .to.equal(addr2ExpectedPayout);
-      expect(await SportsBetting.callStatic.payouts(dummyFixtureID, owner.address))
+      expect(await SportsBetting.callStatic.commissionMap(dummyFixtureID))
         .to.equal(ownerExpectedPayout);
     });
 
@@ -653,14 +653,14 @@ describe("Sports Betting contract", function () {
       await expect(SportsBetting.fulfillFixturePayoutObligationsTest(dummyFixtureID, betTypeHome, winningAmount, totalAmount))
         .to.emit(SportsBetting, "BetPayout")
         .withArgs(addr1.address, dummyFixtureID, addr1ExpectedPayout)
-        .to.emit(SportsBetting, "BetPayout")
-        .withArgs(owner.address, dummyFixtureID, ownerExpectedPayout);
+        .to.emit(SportsBetting, "BetCommissionPayout")
+        .withArgs(dummyFixtureID, ownerExpectedPayout);
 
       expect(await SportsBetting.callStatic.payouts(dummyFixtureID, addr1.address))
         .to.equal(addr1ExpectedPayout);
       expect(await SportsBetting.callStatic.payouts(dummyFixtureID, addr2.address))
         .to.equal(0);
-      expect(await SportsBetting.callStatic.payouts(dummyFixtureID, owner.address))
+      expect(await SportsBetting.callStatic.commissionMap(dummyFixtureID))
         .to.equal(ownerExpectedPayout);
     });
   });
@@ -1169,7 +1169,7 @@ describe("Sports Betting contract", function () {
   });
 
   describe("updateFixtureResult", function () {
-    it("Should sent total amount to owner if no bets placed on winning result", async function () {
+    it("Should send total amount to owner if no bets placed on winning result", async function () {
       const { SportsBetting, owner, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN

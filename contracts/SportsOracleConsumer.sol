@@ -43,21 +43,30 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         string memory _sportsOracleURI,
         address _oracle,
         address _link,
-        bytes32 _jobId,
+        string memory _jobId,
         uint256 _fee
     ) {
         sportsOracleURI = _sportsOracleURI;
         setChainlinkToken(_link);
         setChainlinkOracle(_oracle);
         chainlink = _oracle;
-        //jobId = _jobId;
-        jobId = "7599d3c8f31e4ce78ad2b790cbcfc673";
+        jobId = stringToBytes32(_jobId);
         fee = _fee;
     }
 
     modifier hasLinkFee() {
         require(userToLink[msg.sender] > fee, "You haven't sent enough LINK.");
         _;
+    }
+
+    function stringToBytes32(string memory source) private pure returns (bytes32 result) {
+        bytes memory tempEmptyStringTest = bytes(source);
+        if (tempEmptyStringTest.length == 0) {
+            return 0x0;
+        }
+        assembly {
+        result := mload(add(source, 32))
+        }
     }
 
     /**

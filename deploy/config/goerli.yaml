@@ -1,0 +1,7 @@
+linkAddress: "0x326C977E6efc84E512bB9C30f76E30c160eD06FB"
+commissionRate: 1
+oracle:
+    sportsOracleURI: "https://1vyuff64d9.execute-api.us-east-1.amazonaws.com/dev/premier-league/fixtures/"
+    nodeOperatorAddress: "0xcc79157eb46f5624204f47ab42b3906caa40eab7"
+    jobID: "ca98366cc7314957b8c012c72f05aeeb"
+    requestFee: "100000000000000000"
