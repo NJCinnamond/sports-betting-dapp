@@ -751,10 +751,9 @@ describe("Sports Betting contract", function () {
       // Revert string
       const expectedReversionString = `Error on fixture ${dummyFixtureID}: Unknown fixture result from API`;
 
-      await expect(SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, unexpectedResultResponse))
+      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, unexpectedResultResponse))
         .to.emit(SportsBetting, "BetPayoutFulfillmentError")
-        .withArgs(dummyFixtureID, expectedReversionString)
-        .to.be.revertedWith(expectedReversionString);
+        .withArgs(dummyFixtureID, expectedReversionString);
     });
 
     it("Should return correct BetTypes", async function () {

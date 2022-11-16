@@ -447,6 +447,9 @@ contract SportsBetting is SportsOracleConsumer {
         internal
     {
         BetType result = getFixtureResultFromAPIResponse(fixtureID, _result);
+        if (result == BetType.DEFAULT) {
+            return;
+        }
 
         BetType[] memory winningOutcomes = new BetType[](1);
         winningOutcomes[0] = result;
@@ -501,7 +504,7 @@ contract SportsBetting is SportsOracleConsumer {
             ": Unknown fixture result from API"
         );
         emit BetPayoutFulfillmentError(fixtureID, errorString);
-        revert(errorString);
+        return BetType.DEFAULT;
     }
 
     function getLosingFixtureOutcomes(BetType outcome)
