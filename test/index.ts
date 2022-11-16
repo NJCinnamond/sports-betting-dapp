@@ -756,6 +756,21 @@ describe("Sports Betting contract", function () {
         .withArgs(dummyFixtureID, expectedReversionString);
     });
 
+    it("Should revert if result response is BetType Default", async function () {
+      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
+
+      // ASSIGN
+      const dummyFixtureID = '1234';
+      const unexpectedResultResponse = 0; // BetType.DEFAULT
+
+      // Revert string
+      const expectedReversionString = `Error on fixture ${dummyFixtureID}: Unknown fixture result from API`;
+
+      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, unexpectedResultResponse))
+        .to.emit(SportsBetting, "BetPayoutFulfillmentError")
+        .withArgs(dummyFixtureID, expectedReversionString);
+    });
+
     it("Should return correct BetTypes", async function () {
       const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
 

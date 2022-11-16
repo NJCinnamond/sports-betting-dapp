@@ -55,7 +55,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
     }
 
     modifier hasLinkFee() {
-        require(userToLink[msg.sender] > fee, "You haven't sent enough LINK.");
+        require(userToLink[msg.sender] >= fee, "You haven't sent enough LINK.");
         _;
     }
 

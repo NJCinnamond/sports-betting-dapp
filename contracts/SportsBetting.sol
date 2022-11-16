@@ -438,17 +438,24 @@ contract SportsBetting is SportsOracleConsumer {
 
         // Only action on fixture result if we are in FULFILLING
         if (bettingState[fixtureID] == BettingState.FULFILLING) {
-            updateFixtureResult(fixtureID, _result);
-            setFixtureBettingState(fixtureID, BettingState.FULFILLED);
+            bool success = updateFixtureResult(fixtureID, _result);
+            if (success) {
+                // Set fixture state to FULFILLED to terminate workflow
+                setFixtureBettingState(fixtureID, BettingState.FULFILLED);
+            } else {
+                // Set fixture state to AWAITING so we can try payout again in future
+                setFixtureBettingState(fixtureID, BettingState.AWAITING);
+            }
         }
     }
 
     function updateFixtureResult(string memory fixtureID, uint256 _result)
         internal
+        returns (bool)
     {
         BetType result = getFixtureResultFromAPIResponse(fixtureID, _result);
         if (result == BetType.DEFAULT) {
-            return;
+            return false;
         }
 
         BetType[] memory winningOutcomes = new BetType[](1);
@@ -480,6 +487,7 @@ contract SportsBetting is SportsOracleConsumer {
             payable(owner).transfer(totalAmount);
             emit BetPayout(owner, fixtureID, totalAmount);
         }
+        return true;
     }
 
     function getFixtureResultFromAPIResponse(
@@ -493,10 +501,6 @@ contract SportsBetting is SportsOracleConsumer {
         } else if (_result == uint256(BetType.AWAY)) {
             return BetType.AWAY;
         }
-
-        // Error: unknown value in 'result' field
-        // Set fixture state to AWAITING so we can try again in future
-        setFixtureBettingState(fixtureID, BettingState.AWAITING);
 
         string memory errorString = string.concat(
             "Error on fixture ",
