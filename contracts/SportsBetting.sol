@@ -238,8 +238,8 @@ contract SportsBetting is SportsOracleConsumer {
     // know that it advanced enough in the future
     function openBetForFixture(string memory fixtureID) public {
         require(
-            bettingState[fixtureID] == BettingState.CLOSED,
-            "Bet state must be CLOSED."
+            bettingState[fixtureID] == BettingState.CLOSED || bettingState[fixtureID] == BettingState.OPENING,
+            "State must be CLOSED or OPENING."
         );
         setFixtureBettingState(fixtureID, BettingState.OPENING);
         requestFixtureKickoffTime(fixtureID);
@@ -443,7 +443,7 @@ contract SportsBetting is SportsOracleConsumer {
                 // Set fixture state to FULFILLED to terminate workflow
                 setFixtureBettingState(fixtureID, BettingState.FULFILLED);
             } else {
-                // Set fixture state to AWAITING so we can try payout again in future
+                // Set fixture state to AWAITING so we can retry Payout flow
                 setFixtureBettingState(fixtureID, BettingState.AWAITING);
             }
         }

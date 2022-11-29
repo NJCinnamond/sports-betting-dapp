@@ -13,7 +13,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
     const { deployer } = await getNamedAccounts();
 
-    const oracleURI = deployObj.oracle.sportsOracleURI;
+    const oracleURI = deployObj.oracle.uri;
     const oracleOperatorCtx = deployObj.oracle.nodeOperatorAddress;
     const linkAddress = deployObj.linkAddress;
     const jobID = deployObj.oracle.jobID;

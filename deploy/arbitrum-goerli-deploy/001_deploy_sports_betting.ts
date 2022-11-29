@@ -13,12 +13,19 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
     const { deployer } = await getNamedAccounts();
 
-    const oracleURI = deployObj.oracle.sportsOracleURI;
+    const oracleURI = deployObj.oracle.uri;
     const oracleOperatorCtx = deployObj.oracle.nodeOperatorAddress;
     const linkAddress = deployObj.linkAddress;
     const jobID = deployObj.oracle.jobID;
     const requestFee = BigNumber.from(deployObj.oracle.requestFee); // 0.1 LINK
     const commissionRate = deployObj.commissionRate;
+
+    console.log(oracleURI);
+    console.log(oracleOperatorCtx);
+    console.log(linkAddress);
+    console.log(jobID);
+    console.log(requestFee);
+    console.log(commissionRate);
 
     await deploy('SportsBetting', {
         from: deployer,
