@@ -4,8 +4,6 @@ import { ethers, network, waffle } from "hardhat";
 const { deployMockContract, provider } = waffle;
 
 const chai = require('chai')
-const sinon = require('sinon')
-const sinonChai = require('sinon-chai')
 const { smock } = require('@defi-wonderland/smock')
 const expect = chai.expect
 chai.use(smock.matchers)
@@ -35,6 +33,9 @@ describe("Sports Betting contract", function () {
     const LinkToken = require('../artifacts/contracts/mock/LinkTokenInterface.sol/LinkTokenInterface.json');
     const mockLinkToken = await deployMockContract(deployerOfContract, LinkToken.abi);
 
+    const DaiToken = require('../artifacts/contracts/mock/IERC20.sol/IERC20.json');
+    const mockDaiToken = await deployMockContract(deployerOfContract, DaiToken.abi);
+
     // Get the SportsBetting contract and Signers
     const SportsBettingFactory = await ethers.getContractFactory("SportsBettingTest");
     const [owner, addr1, addr2, addr3, addr4] = await ethers.getSigners();
@@ -44,6 +45,7 @@ describe("Sports Betting contract", function () {
     const SportsBetting = await SportsBettingFactory.deploy(
       'mock_uri',
       '0x74EcC8Bdeb76F2C6760eD2dc8A46ca5e581fA656', // Chainlink DevRel
+      mockDaiToken.address,
       mockLinkToken.address,
       formatBytes32String('example'),
       linkFee,
@@ -51,7 +53,7 @@ describe("Sports Betting contract", function () {
     );
     await SportsBetting.deployed();
 
-    return { SportsBettingFactory, SportsBetting, mockLinkToken, owner, addr1, addr2, addr3, addr4 }
+    return { SportsBettingFactory, SportsBetting, mockDaiToken, mockLinkToken, owner, addr1, addr2, addr3, addr4 }
   }
 
   describe("Deployment", function () {
@@ -332,7 +334,7 @@ describe("Sports Betting contract", function () {
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateClosed);
 
       // ACT & ASSERT
-      await expect(SportsBetting.stake(dummyFixtureID, betTypeHome))
+      await expect(SportsBetting.stake(dummyFixtureID, betTypeHome, 0))
         .to.be.revertedWith("Bet activity is not open.");
     });
 
@@ -347,12 +349,12 @@ describe("Sports Betting contract", function () {
       const amountBelowEntranceFee = 1;
 
       // ACT & ASSERT
-      await expect(SportsBetting.stake(dummyFixtureID, betTypeHome, { value: amountBelowEntranceFee }))
+      await expect(SportsBetting.stake(dummyFixtureID, betTypeHome, amountBelowEntranceFee))
         .to.be.revertedWith("Amount is below entrance fee.");
     });
 
     it("Should update contract state variables correctly with valid stake", async function () {
-      const { SportsBetting, addr1 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1 } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -362,8 +364,11 @@ describe("Sports Betting contract", function () {
       // Stake 1 ETH
       const stakeAmount = ethers.utils.parseUnits("5", 18);
 
+      // Initialize mock
+      await mockDaiToken.mock.transferFrom.returns(true);
+
       // ACT & ASSERT
-      await expect(SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: stakeAmount }))
+      await expect(SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, stakeAmount ))
         .to.emit(SportsBetting, "BetStaked")
         .withArgs(addr1.address, dummyFixtureID, stakeAmount, betTypeHome);
 
@@ -423,21 +428,27 @@ describe("Sports Betting contract", function () {
     });
 
     it("Should update contract state variables correctly with valid partial unstake", async function () {
-      const { SportsBetting, addr1 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1 } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
       await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
+      // Initialize mock
+      await mockDaiToken.mock.transferFrom.returns(true);
+
       // ACT
       // Stake 1 ETH
       const stakeAmount = ethers.utils.parseUnits("5", 16);
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: stakeAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, stakeAmount);
 
       // Unstake 0.2 ETH
       const unstakeAmount = ethers.utils.parseUnits("2", 16);
       const expectedFinalStakeAmount = ethers.utils.parseUnits("3", 16);
+
+      // Initialize mock
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSERT
       await expect(SportsBetting.connect(addr1).unstake(dummyFixtureID, betTypeHome, unstakeAmount))
@@ -454,17 +465,23 @@ describe("Sports Betting contract", function () {
     });
 
     it("Should update contract state variables correctly with valid full unstake", async function () {
-      const { SportsBetting, addr1 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1 } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
       const dummyFixtureID = '1234';
       await SportsBetting.setFixtureBettingStateTest(dummyFixtureID, bettingStateOpen);
       await SportsBetting.updateKickoffTimeTest(dummyFixtureID, unixTomorrow);
 
+      // Initialize mock
+      await mockDaiToken.mock.transferFrom.returns(true);
+
       // ACT
       // Stake 1 ETH
       const stakeAmount = ethers.utils.parseUnits("5", 16);
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: stakeAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, stakeAmount);
+
+      // Initialize mock
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSERT
       // Call unstake with unstakeAmount == stakeAmount for full unstake
@@ -559,7 +576,7 @@ describe("Sports Betting contract", function () {
     });
 
     it("Should update ctx variables and balances correctly", async function () {
-      const { SportsBetting, owner, addr1, addr2, addr3 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1, addr2, addr3 } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -573,10 +590,14 @@ describe("Sports Betting contract", function () {
       // Addr3 bets on a losing result (AWAY) with 6 ETH
       const addr3BetAmount = ethers.utils.parseUnits("6", 18);
 
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
+
       // Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetAmount });
-      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetAmount });
-      await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeAway, { value: addr3BetAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetAmount);
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, addr2BetAmount);
+      await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeAway, addr3BetAmount);
 
       // Winning amount = 2 + 1 = 3 ETH
       // Total amount = 2 + 1 + 6 = 9 ETH
@@ -613,7 +634,11 @@ describe("Sports Betting contract", function () {
     });
 
     it("Should update ctx variables and balances correctly with unstake", async function () {
-      const { SportsBetting, owner, addr1, addr2, addr3 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1, addr2, addr3 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -628,9 +653,9 @@ describe("Sports Betting contract", function () {
       const addr3BetAmount = ethers.utils.parseUnits("6", 18);
 
       // Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetAmount });
-      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetAmount });
-      await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeAway, { value: addr3BetAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetAmount);
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, addr2BetAmount);
+      await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeAway, addr3BetAmount );
 
       // Now addr2 unstakes entire stake
       await SportsBetting.connect(addr2).unstake(dummyFixtureID, betTypeHome, addr2BetAmount);
@@ -681,7 +706,11 @@ describe("Sports Betting contract", function () {
     });
 
     it("Should return correct bet amounts for one outcome", async function () {
-      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -694,8 +723,8 @@ describe("Sports Betting contract", function () {
       const addr2BetAmount = ethers.utils.parseUnits("1", 18);
 
       // Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetAmount });
-      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, { value: addr2BetAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetAmount);
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, addr2BetAmount);
 
       // HOME win
       const outcomes = [betTypeHome];
@@ -704,8 +733,12 @@ describe("Sports Betting contract", function () {
         .to.equal(addr1BetAmount);
     });
 
-    it("Should return correct bet amounts for multiple outcome", async function () {
-      const { SportsBetting, addr1, addr2, addr3, addr4 } = await loadFixture(deploySportsBettingFixture);
+    it("Should return correct bet amounts for multiple outcomes", async function () {
+      const { SportsBetting, mockDaiToken, addr1, addr2, addr3, addr4 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -724,11 +757,11 @@ describe("Sports Betting contract", function () {
       const addr1SecondBetAmount = ethers.utils.parseUnits("3", 18);
 
       // Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetAmount });
-      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, { value: addr2BetAmount });
-      await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeDraw, { value: addr3BetAmount });
-      await SportsBetting.connect(addr4).stake(dummyFixtureID, betTypeHome, { value: addr4BetAmount });
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1SecondBetAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetAmount);
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, addr2BetAmount);
+      await SportsBetting.connect(addr3).stake(dummyFixtureID, betTypeDraw, addr3BetAmount);
+      await SportsBetting.connect(addr4).stake(dummyFixtureID, betTypeHome, addr4BetAmount);
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1SecondBetAmount);
 
       // HOME win and DRAW
       const outcomes = [betTypeHome, betTypeDraw];
@@ -809,7 +842,11 @@ describe("Sports Betting contract", function () {
     });
 
     it("Should return correct user stake with single staker", async function () {
-      const { SportsBetting, addr1 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -822,8 +859,8 @@ describe("Sports Betting contract", function () {
       const addr1BetAwayAmount = ethers.utils.parseUnits("1", 18);
 
       // Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, { value: addr1BetAwayAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetHomeAmount);
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, addr1BetAwayAmount);
 
       // ACT & ASSERT
       const result = await SportsBetting.callStatic.getStakeSummaryForUserTest(dummyFixtureID, addr1.address);
@@ -835,7 +872,11 @@ describe("Sports Betting contract", function () {
     });
 
     it("Should return correct user stake with multiple stakers", async function () {
-      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -853,10 +894,10 @@ describe("Sports Betting contract", function () {
       const addr2BetAwayAmount = ethers.utils.parseUnits("2", 18);
 
       // Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, { value: addr1BetAwayAmount });
-      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetHomeAmount });
-      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, { value: addr2BetAwayAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetHomeAmount);
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, addr1BetAwayAmount);
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, addr2BetHomeAmount);
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, addr2BetAwayAmount);
 
       // ACT & ASSERT
       const result = await SportsBetting.callStatic.getStakeSummaryForUserTest(dummyFixtureID, addr1.address);
@@ -870,7 +911,11 @@ describe("Sports Betting contract", function () {
 
   describe("getEnrichedFixtureData", function () {
     it("Should return correct enrichment with multiple stakers", async function () {
-      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -892,10 +937,10 @@ describe("Sports Betting contract", function () {
       const expectedTotalAwayAmount = ethers.utils.parseUnits("3", 18);
 
       // ACT: Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, { value: addr1BetAwayAmount });
-      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetHomeAmount });
-      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, { value: addr2BetAwayAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetHomeAmount);
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, addr1BetAwayAmount);
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, addr2BetHomeAmount);
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeAway, addr2BetAwayAmount);
 
       // ACT: Addr1 calls getEnrichedFixtureData
       const result = await SportsBetting.callStatic.getEnrichedFixtureData(dummyFixtureID, addr1.address);
@@ -916,7 +961,11 @@ describe("Sports Betting contract", function () {
 
   describe("handleClosingBetsForFixture", function () {
     it("Should fully refund all stakers for all fixture amounts", async function () {
-      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -934,10 +983,10 @@ describe("Sports Betting contract", function () {
       const addr2BetDrawAmount = ethers.utils.parseUnits("2", 18);
 
       // ACT: Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, { value: addr1BetAwayAmount });
-      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, { value: addr2BetHomeAmount });
-      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeDraw, { value: addr2BetDrawAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetHomeAmount);
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeAway, addr1BetAwayAmount);
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeHome, addr2BetHomeAmount);
+      await SportsBetting.connect(addr2).stake(dummyFixtureID, betTypeDraw, addr2BetDrawAmount);
 
       // ASSERT
       await expect(SportsBetting.handleClosingBetsForFixtureTest(dummyFixtureID))
@@ -974,7 +1023,11 @@ describe("Sports Betting contract", function () {
 
   describe("removeStakeState", function () {
     it("Should correctly amend betting states for staker for partial unstake", async function () {
-      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -989,7 +1042,7 @@ describe("Sports Betting contract", function () {
       const addr1FinalStakeAmount = ethers.utils.parseUnits("1", 18);
 
       // ACT: Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetHomeAmount);
 
       // ASSERT
       await SportsBetting.removeStakeStateTest(dummyFixtureID, betTypeHome, addr1UnstakeAmount, addr1.address);
@@ -1004,7 +1057,11 @@ describe("Sports Betting contract", function () {
     });
 
     it("Should correctly amend betting states for staker for full unstake", async function () {
-      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -1015,7 +1072,7 @@ describe("Sports Betting contract", function () {
       const addr1BetHomeAmount = ethers.utils.parseUnits("2", 18);
 
       // ACT: Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetHomeAmount);
 
       // ASSERT
       // UNSTAKE FULL AMOUNT
@@ -1031,7 +1088,7 @@ describe("Sports Betting contract", function () {
     });
 
     it("Should revert if no stake for staker on result", async function () {
-      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, addr1 } = await loadFixture(deploySportsBettingFixture);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -1047,7 +1104,11 @@ describe("Sports Betting contract", function () {
     });
 
     it("Should revert if unstake amount exceeds stake", async function () {
-      const { SportsBetting, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, addr1 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -1060,7 +1121,7 @@ describe("Sports Betting contract", function () {
       const addr1UnstakeAmount = ethers.utils.parseUnits("3", 18);
 
       // ACT: Place bets
-      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1BetHomeAmount });
+      await SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1BetHomeAmount);
 
       // ASSERT
       await expect(SportsBetting.removeStakeStateTest(dummyFixtureID, betTypeHome, addr1UnstakeAmount, addr1.address))
@@ -1118,7 +1179,7 @@ describe("Sports Betting contract", function () {
 
   describe("withdrawLink", function () {
     it("Should update userToLink var", async function () {
-      const { SportsBetting, addr1, addr2, mockLinkToken } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, addr1, mockLinkToken } = await loadFixture(deploySportsBettingFixture);
 
       // Addr1 transfers 2 LINK
       const addr1TransferAmount = ethers.utils.parseUnits("2", 18);
@@ -1184,7 +1245,11 @@ describe("Sports Betting contract", function () {
 
   describe("updateFixtureResult", function () {
     it("Should send total amount to owner if no bets placed on winning result", async function () {
-      const { SportsBetting, owner, addr1, addr2 } = await loadFixture(deploySportsBettingFixture);
+      const { SportsBetting, mockDaiToken, owner, addr1 } = await loadFixture(deploySportsBettingFixture);
+
+      // Mock DAI token
+      await mockDaiToken.mock.transferFrom.returns(true);
+      await mockDaiToken.mock.transfer.returns(true);
 
       // ASSIGN
       const dummyFixtureID = '1234';
@@ -1193,11 +1258,11 @@ describe("Sports Betting contract", function () {
 
       // Addr1 stakes 5 ETH ON HOME
       const addr1StakeAmount = ethers.utils.parseUnits("5", 18);
-      SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, { value: addr1StakeAmount });
+      SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeHome, addr1StakeAmount);
 
       // Addr2 stakes 3 ETH ON DRAW
       const addr2StakeAmount = ethers.utils.parseUnits("3", 18);
-      SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeDraw, { value: addr2StakeAmount });
+      SportsBetting.connect(addr1).stake(dummyFixtureID, betTypeDraw, addr2StakeAmount);
 
       const totalStakeAmount = ethers.utils.parseUnits("8", 18);
 

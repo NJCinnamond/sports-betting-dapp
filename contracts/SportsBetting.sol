@@ -1,12 +1,13 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.12;
 
+import "./mock/IERC20.sol";
 import "./SportsOracleConsumer.sol";
 import "hardhat/console.sol";
 
 contract SportsBetting is SportsOracleConsumer {
     // Define DEFAULT BetType = 0. 
-    // This BetType is actually invalid and acts a placeholder to catch erroneous
+    // DEFAULT BetType is actually invalid and acts a placeholder to catch erroneous
     // betType entries, as Solidity interprets null values as 0.
     enum BetType {
         DEFAULT,
@@ -59,8 +60,11 @@ contract SportsBetting is SportsOracleConsumer {
     // Contract owner
     address public owner;
 
-    // Entrance fee of 0.0001 Eth (10^14 Wei)
+    // Entrance fee of 0.0001 DAI (10^14 Wei)
     uint256 public entranceFee = 10**14;
+
+    // DAI Stablecoin address
+    address public daiAddress;
 
     // Commission rate taken by contract owner for each payout as a percentage
     uint256 public commissionRate;
@@ -116,6 +120,7 @@ contract SportsBetting is SportsOracleConsumer {
     constructor(
         string memory _sportsOracleURI,
         address _oracle,
+        address _dai,
         address _link,
         string memory _jobId,
         uint256 _fee,
@@ -128,6 +133,7 @@ contract SportsBetting is SportsOracleConsumer {
 
         owner = msg.sender;
         commissionRate = _commissionRate;
+        daiAddress = _dai;
     }
 
     function initializeHistoricalBetters(string memory fixtureID) internal {
@@ -335,7 +341,7 @@ contract SportsBetting is SportsOracleConsumer {
         requestFixtureResult(fixtureID);
     }
 
-    function stake(string memory fixtureID, BetType betType) public payable {
+    function stake(string memory fixtureID, BetType betType, uint256 amount) public {
         shouldHaveCorrectBettingState(fixtureID);
         require(
             betType != BetType.DEFAULT,
@@ -345,12 +351,19 @@ contract SportsBetting is SportsOracleConsumer {
             bettingState[fixtureID] == BettingState.OPEN,
             "Bet activity is not open."
         );
-        require(msg.value >= entranceFee, "Amount is below entrance fee.");
+        require(amount >= entranceFee, "Amount is below entrance fee.");
 
-        amounts[fixtureID][betType][msg.sender] += msg.value;
+        // Transfer DAI tokens
+        IERC20 dai = IERC20(daiAddress);
+        require(
+            dai.transferFrom(msg.sender, address(this), amount),
+            "Unable to transfer"
+        );
+
+        amounts[fixtureID][betType][msg.sender] += amount;
         addHistoricalBetter(fixtureID, betType, msg.sender);
         activeBetters[fixtureID][betType][msg.sender] = true;
-        emit BetStaked(msg.sender, fixtureID, msg.value, betType);
+        emit BetStaked(msg.sender, fixtureID, amount, betType);
     }
 
     // Removes all stake in fixtureID-BetType combo
@@ -376,7 +389,11 @@ contract SportsBetting is SportsOracleConsumer {
         address staker
     ) internal {
         removeStakeState(fixtureID, betType, amount, staker);
-        payable(staker).transfer(amount);
+
+        // Transfer DAI to msg sender
+        IERC20 dai = IERC20(daiAddress);
+        require(dai.transfer(msg.sender, amount), "Unable to transfer");
+
         emit BetUnstaked(staker, fixtureID, amount, betType);
     }
 
@@ -484,7 +501,10 @@ contract SportsBetting is SportsOracleConsumer {
         } else {
             // Else total amount is paid to owner
             payouts[fixtureID][owner] += totalAmount;
-            payable(owner).transfer(totalAmount);
+
+            IERC20 dai = IERC20(daiAddress);
+            dai.transfer(owner, totalAmount);
+
             emit BetPayout(owner, fixtureID, totalAmount);
         }
         return true;
@@ -569,6 +589,8 @@ contract SportsBetting is SportsOracleConsumer {
             revert("Bet state not FULFILLING.");
         }
 
+        IERC20 dai = IERC20(daiAddress);
+
         for (
             uint256 i = 0;
             i < historicalBetters[fixtureID][result].length;
@@ -589,13 +611,14 @@ contract SportsBetting is SportsOracleConsumer {
 
                 // Pay better
                 payouts[fixtureID][better] = betterObligation;
-                payable(better).transfer(betterObligation);
+                
+                dai.transfer(better, betterObligation);
                 emit BetPayout(better, fixtureID, betterObligation);
             }
         }
 
         // Pay commission to owner
-        payable(owner).transfer(commissionMap[fixtureID]);
+        dai.transfer(owner, commissionMap[fixtureID]);
         emit BetCommissionPayout(fixtureID, commissionMap[fixtureID]);
     }
 

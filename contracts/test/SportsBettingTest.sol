@@ -7,6 +7,7 @@ contract SportsBettingTest is SportsBetting {
     constructor(
         string memory _sportsOracleURI,
         address _oracle,
+        address _dai,
         address _link,
         string memory _jobId,
         uint256 _fee,
@@ -15,6 +16,7 @@ contract SportsBettingTest is SportsBetting {
         SportsBetting(
             _sportsOracleURI,
             _oracle,
+            _dai,
             _link,
             _jobId,
             _fee,
