@@ -2,6 +2,7 @@
 pragma solidity ^0.8.12;
 
 import "../SportsBetting.sol";
+import "../SportsBettingLib.sol";
 
 contract SportsBettingTest is SportsBetting {
     constructor(
@@ -30,14 +31,14 @@ contract SportsBettingTest is SportsBetting {
 
     function getHistoricalBettersLength(
         string memory fixtureID,
-        BetType betType
+        SportsBettingLib.BetType betType
     ) public view returns (uint256) {
         return historicalBetters[fixtureID][betType].length;
     }
 
     function setHistoricalBetters(
         string memory fixtureID,
-        BetType betType,
+        SportsBettingLib.BetType betType,
         address[] memory addresses
     ) public {
         historicalBetters[fixtureID][betType] = addresses;
@@ -75,7 +76,7 @@ contract SportsBettingTest is SportsBetting {
 
     function fulfillFixturePayoutObligationsTest(
         string memory fixtureID,
-        BetType result,
+        SportsBettingLib.BetType result,
         uint256 winningAmount,
         uint256 totalAmount
     ) public {
@@ -87,26 +88,11 @@ contract SportsBettingTest is SportsBetting {
         );
     }
 
-    function getLosingFixtureOutcomesTest(BetType outcome)
-        public
-        view
-        returns (BetType[] memory)
-    {
-        return getLosingFixtureOutcomes(outcome);
-    }
-
     function getTotalAmountBetOnFixtureOutcomesTest(
         string memory fixtureID,
-        BetType[] memory outcomes
+        SportsBettingLib.BetType[] memory outcomes
     ) public view returns (uint256) {
         return getTotalAmountBetOnFixtureOutcomes(fixtureID, outcomes);
-    }
-
-    function getFixtureResultFromAPIResponseTest(
-        string memory fixtureID,
-        uint256 _result
-    ) public returns (BetType) {
-        return getFixtureResultFromAPIResponse(fixtureID, _result);
     }
 
     function updateFixtureResultTest(string memory fixtureID, uint256 _result)
@@ -117,7 +103,7 @@ contract SportsBettingTest is SportsBetting {
 
     function removeStakeStateTest(
         string memory fixtureID,
-        BetType betType,
+        SportsBettingLib.BetType betType,
         uint256 amount,
         address staker
     ) public {

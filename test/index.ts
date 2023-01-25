@@ -30,15 +30,24 @@ describe("Sports Betting contract", function () {
   async function deploySportsBettingFixture() {
     const [deployerOfContract] = provider.getWallets();
 
+    const [owner, addr1, addr2, addr3, addr4] = await ethers.getSigners();
+
     const LinkToken = require('../artifacts/contracts/mock/LinkTokenInterface.sol/LinkTokenInterface.json');
     const mockLinkToken = await deployMockContract(deployerOfContract, LinkToken.abi);
 
     const DaiToken = require('../artifacts/contracts/mock/IERC20.sol/IERC20.json');
     const mockDaiToken = await deployMockContract(deployerOfContract, DaiToken.abi);
 
+    const SportsBettingLibFactory = await ethers.getContractFactory("SportsBettingLib");
+    const SportsBettingLib = await SportsBettingLibFactory.deploy();
+    await SportsBettingLib.deployed();
+
     // Get the SportsBetting contract and Signers
-    const SportsBettingFactory = await ethers.getContractFactory("SportsBettingTest");
-    const [owner, addr1, addr2, addr3, addr4] = await ethers.getSigners();
+    const SportsBettingFactory = await ethers.getContractFactory("SportsBettingTest", {
+      libraries: {
+        SportsBettingLib: SportsBettingLib.address,
+      }
+    });
 
     const linkFee = 1000;
 
@@ -514,51 +523,6 @@ describe("Sports Betting contract", function () {
     });
   });
 
-  describe("getLosingFixtureOutcomes", function () {
-    it("Should correctly get losing fixture outcomes on HOME", async function () {
-      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
-
-      const outcome = betTypeHome;
-      const expected = [betTypeDraw, betTypeAway];
-
-      // ACT & ASSERT
-      expect(await SportsBetting.callStatic.getLosingFixtureOutcomesTest(outcome))
-        .to.deep.equal(expected);
-    });
-
-    it("Should correctly get losing fixture outcomes on DRAW", async function () {
-      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
-
-      const outcome = betTypeDraw;
-      const expected = [betTypeHome, betTypeAway];
-
-      // ACT & ASSERT
-      expect(await SportsBetting.callStatic.getLosingFixtureOutcomesTest(outcome))
-        .to.deep.equal(expected);
-    });
-
-    it("Should correctly get losing fixture outcomes on AWAY", async function () {
-      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
-
-      const outcome = betTypeAway;
-      const expected = [betTypeHome, betTypeDraw];
-
-      // ACT & ASSERT
-      expect(await SportsBetting.callStatic.getLosingFixtureOutcomesTest(outcome))
-        .to.deep.equal(expected);
-    });
-
-    it("Should revert if invalid outcome", async function () {
-      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
-
-      const outcome = 100; // Invalid enum
-
-      // ACT & ASSERT
-      await expect(SportsBetting.callStatic.getLosingFixtureOutcomesTest(outcome))
-        .to.be.reverted;
-    });
-  });
-
   describe("fulfillFixturePayoutObligations", function () {
     it("Should revert if fixture bet state is not FULFILLING", async function () {
       const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
@@ -773,56 +737,7 @@ describe("Sports Betting contract", function () {
     });
   });
 
-  describe("getFixtureResultFromAPIResponse", function () {
-    it("Should revert if result response is unexpected uint256", async function () {
-      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
-
-      // ASSIGN
-      const dummyFixtureID = '1234';
-      const unexpectedResultResponse = 69; // No BetType enum value with 69 so this should fail
-
-      // Revert string
-      const expectedReversionString = `Error on fixture ${dummyFixtureID}: Unknown fixture result from API`;
-
-      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, unexpectedResultResponse))
-        .to.emit(SportsBetting, "BetPayoutFulfillmentError")
-        .withArgs(dummyFixtureID, expectedReversionString);
-    });
-
-    it("Should revert if result response is BetType Default", async function () {
-      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
-
-      // ASSIGN
-      const dummyFixtureID = '1234';
-      const unexpectedResultResponse = 0; // BetType.DEFAULT
-
-      // Revert string
-      const expectedReversionString = `Error on fixture ${dummyFixtureID}: Unknown fixture result from API`;
-
-      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, unexpectedResultResponse))
-        .to.emit(SportsBetting, "BetPayoutFulfillmentError")
-        .withArgs(dummyFixtureID, expectedReversionString);
-    });
-
-    it("Should return correct BetTypes", async function () {
-      const { SportsBetting } = await loadFixture(deploySportsBettingFixture);
-
-      // ASSIGN
-      const dummyFixtureID = '1234';
-
-      // HOME
-      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, betTypeHome))
-        .to.equal(betTypeHome);
-
-      // DRAW
-      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, betTypeDraw))
-        .to.equal(betTypeDraw);
-
-      // AWAY
-      expect(await SportsBetting.callStatic.getFixtureResultFromAPIResponseTest(dummyFixtureID, betTypeAway))
-        .to.equal(betTypeAway);
-    });
-  });
+  
 
   describe("getStakeSummaryForUser", function () {
     it("Should return zeros if no user stake", async function () {
@@ -1271,6 +1186,109 @@ describe("Sports Betting contract", function () {
       await expect(SportsBetting.connect(addr1).updateFixtureResultTest(dummyFixtureID, betTypeAway))
         .to.emit(SportsBetting, "BetPayout")
         .withArgs(owner.address, dummyFixtureID, totalStakeAmount);
+    });
+  });
+});
+
+describe("Sports Betting library", function () {
+  async function deploySportsBettingLibFixture() {
+
+    const SportsBettingLibFactory = await ethers.getContractFactory("SportsBettingLib");
+    const SportsBettingLib = await SportsBettingLibFactory.deploy();
+    await SportsBettingLib.deployed();
+
+    const SportsBettingLibTestFactory = await ethers.getContractFactory("SportsBettingLibTest", {
+      libraries: {
+        SportsBettingLib: SportsBettingLib.address,
+      }
+    });
+    const SportsBettingLibTest = await SportsBettingLibTestFactory.deploy();
+    await SportsBettingLibTest.deployed()
+
+    return { SportsBettingLibTest }
+  }
+
+  describe("getFixtureResultFromAPIResponse", function () {
+    it("Should return BetType.DEFAULT if result response is unexpected uint256", async function () {
+      const { SportsBettingLibTest } = await loadFixture(deploySportsBettingLibFixture);
+
+      const unexpectedResultResponse = 500;
+
+      // Should return 0 = BetType.DEFAULT for unexpected result
+      expect(await SportsBettingLibTest.getFixtureResultFromAPIResponseTest(unexpectedResultResponse))
+        .to.equal(0);
+    });
+
+    it("Should return BetType.DEFAULT if result response is BetType Default", async function () {
+      const { SportsBettingLibTest } = await loadFixture(deploySportsBettingLibFixture);
+
+      const unexpectedResultResponse = 5000;
+
+      // Should return 0 = BetType.DEFAULT for unexpected result
+      expect(await SportsBettingLibTest.getFixtureResultFromAPIResponseTest(unexpectedResultResponse))
+        .to.equal(0);
+    });
+
+    it("Should return correct BetTypes", async function () {
+      const { SportsBettingLibTest } = await loadFixture(deploySportsBettingLibFixture);
+
+      // HOME
+      expect(await SportsBettingLibTest.getFixtureResultFromAPIResponseTest(betTypeHome))
+        .to.equal(betTypeHome);
+
+      // DRAW
+      expect(await SportsBettingLibTest.getFixtureResultFromAPIResponseTest(betTypeDraw))
+        .to.equal(betTypeDraw);
+
+      // AWAY
+      expect(await SportsBettingLibTest.getFixtureResultFromAPIResponseTest(betTypeAway))
+        .to.equal(betTypeAway);
+    });
+  });
+
+  describe("getLosingFixtureOutcomes", function () {
+
+    it("Should correctly get losing fixture outcomes on HOME", async function () {
+      const { SportsBettingLibTest } = await loadFixture(deploySportsBettingLibFixture);
+
+      const outcome = betTypeHome;
+      const expected = [betTypeDraw, betTypeAway];
+
+      // ACT & ASSERT
+      expect(await SportsBettingLibTest.getLosingFixtureOutcomesTest(outcome))
+        .to.deep.equal(expected);
+    });
+
+    it("Should correctly get losing fixture outcomes on DRAW", async function () {
+      const { SportsBettingLibTest } = await loadFixture(deploySportsBettingLibFixture);
+
+      const outcome = betTypeDraw;
+      const expected = [betTypeHome, betTypeAway];
+
+      // ACT & ASSERT
+      expect(await SportsBettingLibTest.getLosingFixtureOutcomesTest(outcome))
+        .to.deep.equal(expected);
+    });
+
+    it("Should correctly get losing fixture outcomes on AWAY", async function () {
+      const { SportsBettingLibTest } = await loadFixture(deploySportsBettingLibFixture);
+
+      const outcome = betTypeAway;
+      const expected = [betTypeHome, betTypeDraw];
+
+      // ACT & ASSERT
+      expect(await SportsBettingLibTest.getLosingFixtureOutcomesTest(outcome))
+        .to.deep.equal(expected);
+    });
+
+    it("Should revert if invalid outcome", async function () {
+      const { SportsBettingLibTest } = await loadFixture(deploySportsBettingLibFixture);
+
+      const outcome = 100; // Invalid enum
+
+      // ACT & ASSERT
+      await expect(SportsBettingLibTest.getLosingFixtureOutcomesTest(outcome))
+        .to.be.reverted;
     });
   });
 });
