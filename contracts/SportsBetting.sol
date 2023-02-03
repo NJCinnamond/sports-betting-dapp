@@ -3,19 +3,20 @@ pragma solidity ^0.8.12;
 
 import "./mock/IERC20.sol";
 import "./SportsOracleConsumer.sol";
-import "hardhat/console.sol";
-
 import "./SportsBettingLib.sol";
 
 contract SportsBetting is SportsOracleConsumer {
 
+    // RESULT_RECEIVED <- FULFILLING
+    // PAID <- (NEW)
     enum BettingState {
         CLOSED,
         OPENING,
         OPEN,
         AWAITING,
-        FULFILLING,
-        FULFILLED
+        RESULT_RECEIVED,
+        CALCULATED,
+        PAID
     }
 
     struct FixtureEnrichment {
@@ -51,28 +52,31 @@ contract SportsBetting is SportsOracleConsumer {
     SportsBettingLib.BetType[4] public betTypes;
 
     // Contract owner
-    address public owner;
+    address public immutable owner;
 
     // Entrance fee of 0.0001 DAI (10^14 Wei)
-    uint256 public entranceFee = 10**14;
+    uint256 public constant ENTRANCE_FEE = 10**14;
 
     // DAI Stablecoin address
-    address public daiAddress;
+    address public immutable daiAddress;
 
-    // Commission rate taken by contract owner for each payout as a percentage
-    uint256 public commissionRate;
+    // Commission rate percentage taken by contract owner for each payout as a percentage
+    uint256 public constant COMMISSION_RATE = 1;
 
     // Max time before a fixture kick-off that a bet can be placed in seconds
     // A fixture bet state will not move to OPEN before a time to the left of the
-    // ko time equal to betAdvanceTime
-    uint256 public betAdvanceTime = 7 * 24 * 60 * 60;
+    // ko time equal to BET_ADVANCE_TIME
+    uint256 public constant BET_ADVANCE_TIME = 7 * 24 * 60 * 60;
 
     // Cut off time for bets before KO time in seconds
-    // i.e. all bets must be placed at time t where t < koTime - betCutOffTime
-    uint256 public betCutOffTime = 90 * 60; // 90 minutes
+    // i.e. all bets must be placed at time t where t < koTime - BET_CUTOFF_TIME
+    uint256 public constant BET_CUTOFF_TIME = 90 * 60; // 90 minutes
 
     // Commission total taken by contract owner indexed by fixture
     mapping(string => uint256) public commissionMap;
+
+    // Map fixture ID to fixture result
+    mapping(string => SportsBettingLib.BetType) public results;
 
     // Map each fixture ID to a map of BetType to an array of all addresses that have ever placed
     // bets for that fixture-result pair
@@ -110,14 +114,17 @@ contract SportsBetting is SportsOracleConsumer {
     // Map oracle request ID for fixture result request to corresponding fixture ID
     mapping(bytes32 => string) public requestResultToFixture;
 
+    // ownerWasPaid maps fixture ID to boolean indicating whether owner has already received payout for fixture
+    // This prevents re-entrancy attacks where the owner can claim multiple payouts in case of fixture with no winners
+    mapping(string => bool) public ownerWasPaid;
+
     constructor(
         string memory _sportsOracleURI,
         address _oracle,
         address _dai,
         address _link,
         string memory _jobId,
-        uint256 _fee,
-        uint256 _commissionRate
+        uint256 _fee
     ) SportsOracleConsumer(_sportsOracleURI, _oracle, _link, _jobId, _fee) {
         betTypes[0] = SportsBettingLib.BetType.DEFAULT;
         betTypes[1] = SportsBettingLib.BetType.HOME;
@@ -125,7 +132,6 @@ contract SportsBetting is SportsOracleConsumer {
         betTypes[3] = SportsBettingLib.BetType.AWAY;
 
         owner = msg.sender;
-        commissionRate = _commissionRate;
         daiAddress = _dai;
     }
 
@@ -212,22 +218,22 @@ contract SportsBetting is SportsOracleConsumer {
         if (state == BettingState.OPEN) {
             initializeHistoricalBetters(fixtureID);
         }
-        // EDGE CASE: We close betting for a fixture that has bets placed, i.e. in the case
-        // of a postponed fixture or an errant opening
-        // We need to pay back the betters who placed bets
-        else if (state == BettingState.CLOSED) {
-            handleClosingBetsForFixture(fixtureID);
-        }
     }
 
-    // closeBetForFixture calls shouldHaveCorrectBettingState which, if kickoff time
-    // is in a certain position relative to current timestamp, will close the bet
+    // closeBetForFixture closes fixture if it is
+    // 1. Not currently closed AND
+    // 2. eligible to be closed
     function closeBetForFixture(string memory fixtureID) public {
         require(
             bettingState[fixtureID] != BettingState.CLOSED,
             "Bet state is already CLOSED."
         );
-        shouldHaveCorrectBettingState(fixtureID);
+        require(
+            fixtureShouldBecomeClosed(fixtureID),
+            "Fixture ineligible to be closed."
+        );
+        setFixtureBettingState(fixtureID, BettingState.CLOSED);
+        handleClosingBetsForFixture(fixtureID);
     }
 
     // openBetForFixture makes an API call to oracle. It is expected that this
@@ -248,94 +254,74 @@ contract SportsBetting is SportsOracleConsumer {
     // by virtue of a bet being placed too close to KO time, however
     // in the event this doesn't happen, this function can be called to
     // attempt to change state to AWAITING
-    // This also helps resolve bugs whereby the bet is marked as fulfilled
-    // when it is not
     function awaitBetForFixture(string memory fixtureID) public {
         require(
             bettingState[fixtureID] == BettingState.OPEN,
             "Bet state must be OPEN."
         );
-        shouldHaveCorrectBettingState(fixtureID);
+        require(
+            fixtureShouldBecomeAwaiting(fixtureID),
+            "Fixture ineligible for AWAITING."
+        );
+        setFixtureBettingState(fixtureID, BettingState.AWAITING);
     }
 
-    // This function handles betting state transitions respective to bet kickoff time
-    // In general, a bet should be
-    // CLOSED       if time < kickoff - betAdvanceTime
-    // OPEN         if kickoff - betAdvanceTime <= time <= ko - betCutOffTime
-    // AWAITING     if time > ko - betCutOffTime
-    function shouldHaveCorrectBettingState(string memory fixtureID) internal {
+    function fixtureShouldBecomeAwaiting(string memory fixtureID) internal view returns(bool) {
         uint256 ko = fixtureToKickoffTime[fixtureID];
-
-        // CLOSE if no kickoff time present
-        if (ko == 0) {
-            setFixtureBettingState(fixtureID, BettingState.CLOSED);
-            return;
-        }
-
-        // OPENING -> CLOSED
-        // If fixture is OPENING, it will become CLOSED if
-        // current time is to the right of kickoff time - betCutOffTime
-        // OR
-        // current time is to the left of kickoff time - betAdvanceTime
-        if (
-            bettingState[fixtureID] == BettingState.OPENING &&
-            (block.timestamp > ko - betCutOffTime ||
-                block.timestamp < ko - betAdvanceTime)
-        ) {
-            setFixtureBettingState(fixtureID, BettingState.CLOSED);
-            return;
-        }
-
-        // OPEN/AWAITING -> CLOSED
-        // If fixture is OPEN or AWAITING, it will become CLOSED if
-        // current time is more than betAdvanceTime to the left of ko
-        if (
-            (bettingState[fixtureID] == BettingState.OPEN ||
-                bettingState[fixtureID] == BettingState.AWAITING) &&
-            block.timestamp < ko - betAdvanceTime
-        ) {
-            setFixtureBettingState(fixtureID, BettingState.CLOSED);
-            return;
-        }
-
-        // OPENING -> OPEN
-        // If a bet is OPENING, it can be OPENed if
-        // current time is more than betCutOffTime before kickoff time AND
-        // current time is less than betAdvanceTime before kickoff time
-        if (
-            bettingState[fixtureID] == BettingState.OPENING &&
-            block.timestamp <= ko - betCutOffTime &&
-            block.timestamp >= ko - betAdvanceTime
-        ) {
-            setFixtureBettingState(fixtureID, BettingState.OPEN);
-            return;
-        }
-
         // OPEN -> AWAITING
         // If a bet is OPEN, it becomes AWAITING if
-        // current time is more than betCutOffTime to the right of kickoff time
-        if (
+        // current time is more than BET_CUTOFF_TIME to the right of kickoff time
+        return (
             bettingState[fixtureID] == BettingState.OPEN &&
-            block.timestamp > ko - betCutOffTime &&
-            betCutOffTime != 0
-        ) {
-            setFixtureBettingState(fixtureID, BettingState.AWAITING);
-            return;
-        }
+            block.timestamp > ko - BET_CUTOFF_TIME
+        );
     }
 
-    function fulfillBetForFixture(string memory fixtureID) public {
-        require(
-            bettingState[fixtureID] == BettingState.AWAITING 
-            || bettingState[fixtureID] == BettingState.FULFILLING,
-            "Must be AWAITING or FULFILLING."
+    function fixtureShouldBecomeOpen(string memory fixtureID) internal view returns(bool) {
+        uint256 ko = fixtureToKickoffTime[fixtureID];
+        // OPENING -> OPEN
+        // If a bet is OPENING, it can be OPENed if
+        // current time is more than BET_CUTOFF_TIME before kickoff time AND
+        // current time is less than BET_ADVANCE_TIME before kickoff time
+        return (
+            bettingState[fixtureID] == BettingState.OPENING &&
+            block.timestamp <= ko - BET_CUTOFF_TIME &&
+            block.timestamp >= ko - BET_ADVANCE_TIME
         );
-        setFixtureBettingState(fixtureID, BettingState.FULFILLING);
-        requestFixtureResult(fixtureID);
+    }
+
+    function fixtureShouldBecomeClosed(string memory fixtureID) internal view returns(bool) {
+        uint256 ko = fixtureToKickoffTime[fixtureID];
+        return (
+            // OPENING -> CLOSED
+            // If fixture is OPENING, it will become CLOSED if
+            // current time is to the right of kickoff time - BET_CUTOFF_TIME
+            // OR
+            // current time is to the left of kickoff time - BET_ADVANCE_TIME
+            (
+                bettingState[fixtureID] == BettingState.OPENING &&
+                (block.timestamp > ko - BET_CUTOFF_TIME ||
+                    block.timestamp < ko - BET_ADVANCE_TIME)
+            ) || 
+            // OPEN/AWAITING -> CLOSED
+            // If fixture is OPEN or AWAITING, it will become CLOSED if
+            // current time is more than BET_ADVANCE_TIME to the left of ko
+            (
+                (bettingState[fixtureID] == BettingState.OPEN ||
+                    bettingState[fixtureID] == BettingState.AWAITING) &&
+                block.timestamp < ko - BET_ADVANCE_TIME
+            )
+            // NOTE: Fixture cannot be closed from RESULT_RECEIVED or PAID state
+        );
     }
 
     function stake(string memory fixtureID, SportsBettingLib.BetType betType, uint256 amount) public {
-        shouldHaveCorrectBettingState(fixtureID);
+        // Don't allow stakes if we should be in AWAITING state
+        if (fixtureShouldBecomeAwaiting(fixtureID)) {
+            setFixtureBettingState(fixtureID, BettingState.AWAITING);
+            return;
+        }
+
         require(
             betType != SportsBettingLib.BetType.DEFAULT,
             "This BetType is not permitted."
@@ -344,7 +330,11 @@ contract SportsBetting is SportsOracleConsumer {
             bettingState[fixtureID] == BettingState.OPEN,
             "Bet activity is not open."
         );
-        require(amount >= entranceFee, "Amount is below entrance fee.");
+        require(amount >= ENTRANCE_FEE, "Amount is below entrance fee.");
+
+        amounts[fixtureID][betType][msg.sender] += amount;
+        addHistoricalBetter(fixtureID, betType, msg.sender);
+        activeBetters[fixtureID][betType][msg.sender] = true;
 
         // Transfer DAI tokens
         IERC20 dai = IERC20(daiAddress);
@@ -352,10 +342,6 @@ contract SportsBetting is SportsOracleConsumer {
             dai.transferFrom(msg.sender, address(this), amount),
             "Unable to transfer"
         );
-
-        amounts[fixtureID][betType][msg.sender] += amount;
-        addHistoricalBetter(fixtureID, betType, msg.sender);
-        activeBetters[fixtureID][betType][msg.sender] = true;
         emit BetStaked(msg.sender, fixtureID, amount, betType);
     }
 
@@ -365,8 +351,17 @@ contract SportsBetting is SportsOracleConsumer {
         SportsBettingLib.BetType betType,
         uint256 amount
     ) public {
+        // Don't allow stakes if we should be in AWAITING state
+        if (fixtureShouldBecomeAwaiting(fixtureID)) {
+            setFixtureBettingState(fixtureID, BettingState.AWAITING);
+            return;
+        }
+        require(
+            bettingState[fixtureID] == BettingState.OPEN,
+            "Bet activity is not open."
+        );
+
         require(amount > 0, "Amount should exceed zero.");
-        shouldHaveCorrectBettingState(fixtureID);
         require(
             bettingState[fixtureID] == BettingState.OPEN,
             "Fixture is not in Open state."
@@ -385,7 +380,7 @@ contract SportsBetting is SportsOracleConsumer {
 
         // Transfer DAI to msg sender
         IERC20 dai = IERC20(daiAddress);
-        require(dai.transfer(msg.sender, amount), "Unable to transfer");
+        require(dai.transfer(msg.sender, amount), "Unable to unstake");
 
         emit BetUnstaked(staker, fixtureID, amount, betType);
     }
@@ -399,6 +394,7 @@ contract SportsBetting is SportsOracleConsumer {
         uint256 amountStaked = amounts[fixtureID][betType][staker];
         require(amountStaked > 0, "No stake on this address-result.");
         require(amount <= amountStaked, "Current stake too low.");
+        require(amountStaked - amount >= ENTRANCE_FEE, "Cannot go below entrance fee.");
 
         // Update stake amount
         amounts[fixtureID][betType][staker] = amountStaked - amount;
@@ -415,21 +411,25 @@ contract SportsBetting is SportsOracleConsumer {
         emit RequestedFixtureKickoff(requestID, fixtureID);
     }
 
-    function fulfillFixtureKickoffTime(bytes32 _requestId, uint256 _ko)
+    function fulfillFixtureKickoffTime(bytes32 requestId, uint256 ko)
         internal
         override
     {
-        string memory fixtureID = requestKickoffToFixture[_requestId];
-        emit RequestFixtureKickoffFulfilled(_requestId, fixtureID, _ko);
+        string memory fixtureID = requestKickoffToFixture[requestId];
+        emit RequestFixtureKickoffFulfilled(requestId, fixtureID, ko);
 
-        updateKickoffTime(fixtureID, _ko);
-        shouldHaveCorrectBettingState(fixtureID);
+        updateKickoffTime(fixtureID, ko);
+        if (fixtureShouldBecomeOpen(fixtureID)) {
+            setFixtureBettingState(fixtureID, BettingState.OPEN);
+        } else if (fixtureShouldBecomeClosed(fixtureID)) {
+            setFixtureBettingState(fixtureID, BettingState.CLOSED);
+        }
     }
 
-    function updateKickoffTime(string memory fixtureID, uint256 _ko) internal {
-        if (_ko != fixtureToKickoffTime[fixtureID]) {
-            fixtureToKickoffTime[fixtureID] = _ko;
-            emit KickoffTimeUpdated(fixtureID, _ko);
+    function updateKickoffTime(string memory fixtureID, uint256 ko) internal {
+        if (ko != fixtureToKickoffTime[fixtureID]) {
+            fixtureToKickoffTime[fixtureID] = ko;
+            emit KickoffTimeUpdated(fixtureID, ko);
         }
     }
 
@@ -439,40 +439,44 @@ contract SportsBetting is SportsOracleConsumer {
         emit RequestedFixtureResult(requestID, fixtureID);
     }
 
-    function fulfillFixtureResult(bytes32 _requestId, uint256 _result)
+    function fulfillFixtureResult(bytes32 requestId, uint256 result)
         internal
         override
     {
-        string memory fixtureID = requestResultToFixture[_requestId];
-        emit RequestFixtureResultFulfilled(_requestId, fixtureID, _result);
+        string memory fixtureID = requestResultToFixture[requestId];
+        emit RequestFixtureResultFulfilled(requestId, fixtureID, result);
 
-        // Only action on fixture result if we are in FULFILLING
-        if (bettingState[fixtureID] == BettingState.FULFILLING) {
-            bool success = updateFixtureResult(fixtureID, _result);
-            if (success) {
-                // Set fixture state to FULFILLED to terminate workflow
-                setFixtureBettingState(fixtureID, BettingState.FULFILLED);
-            } else {
-                // Set fixture state to AWAITING so we can retry Payout flow
-                setFixtureBettingState(fixtureID, BettingState.AWAITING);
-            }
-        }
-    }
-
-    function updateFixtureResult(string memory fixtureID, uint256 _result)
-        internal
-        returns (bool)
-    {
-        SportsBettingLib.BetType result = SportsBettingLib.getFixtureResultFromAPIResponse(_result);
-        if (result == SportsBettingLib.BetType.DEFAULT) {
+        SportsBettingLib.BetType parsedResult = SportsBettingLib.getFixtureResultFromAPIResponse(result);
+        if (parsedResult == SportsBettingLib.BetType.DEFAULT) {
             string memory errorString = string.concat(
                 "Error on fixture ",
                 fixtureID,
                 ": Unknown fixture result from API"
             );
             emit BetPayoutFulfillmentError(fixtureID, errorString);
+            revert(errorString);
         }
 
+        results[fixtureID] = parsedResult;
+
+        // Only action on fixture result if we are in AWAITING
+        if (bettingState[fixtureID] == BettingState.AWAITING) {
+            // Set fixture state to RESULT_RECEIVED
+            setFixtureBettingState(fixtureID, BettingState.RESULT_RECEIVED);
+        }
+    }
+
+    // calculateFixturePayout calculates the obligations (amount we owe to each
+    // winning staker for this fixture)
+    function calculateFixturePayout(string memory fixtureID)
+        public
+    {
+        require(
+            bettingState[fixtureID] == BettingState.RESULT_RECEIVED,
+            "State should be RESULT_RECEIVED."
+        );
+
+        SportsBettingLib.BetType result = results[fixtureID];
         SportsBettingLib.BetType[] memory winningOutcomes = new SportsBettingLib.BetType[](1);
         winningOutcomes[0] = result;
 
@@ -490,36 +494,56 @@ contract SportsBetting is SportsOracleConsumer {
 
         // If winningAmount > 0, we have winners we can pay out to
         if (winningAmount > 0) {
-            fulfillFixturePayoutObligations(
-                fixtureID,
-                result,
-                winningAmount,
-                totalAmount
-            );
+            uint256 commission = 0;
+            for (
+                uint256 i = 0;
+                i < historicalBetters[fixtureID][result].length;
+                i++
+            ) {
+                address better = historicalBetters[fixtureID][result][i];
+                if (activeBetters[fixtureID][result][better]) {
+                    uint256 betterAmount = amounts[fixtureID][result][better];
+
+                    // Calculate better's share of winnings
+                    uint256 betterObligation = (betterAmount * winningAmount) / totalAmount;
+
+                    // Handle commission
+                    commission += (COMMISSION_RATE * betterObligation) / 100;
+                    betterObligation -= commission;
+
+                    // Set bet payout better
+                    payouts[fixtureID][better] = betterObligation;
+                }
+            }
+            commissionMap[fixtureID] = commission;
         } else {
             // Else total amount is paid to owner
-            payouts[fixtureID][owner] += totalAmount;
-
-            IERC20 dai = IERC20(daiAddress);
-            dai.transfer(owner, totalAmount);
-
-            emit BetPayout(owner, fixtureID, totalAmount);
+            commissionMap[fixtureID] =  totalAmount;
         }
-        return true;
+
+        // State transition: RESULT_RECEIVED -> CALCULATED
+        // This prevents cross-function re-entrancy attacks that would allow
+        // attackers to recalculate bet payouts after is called transfer() in
+        // fulfillFixturePayoutObligations
+        setFixtureBettingState(fixtureID, BettingState.CALCULATED);
+
+        // Begin fixture payout 
+        fulfillFixturePayoutObligations(fixtureID);
     }
 
-    // fulfillFixturePayoutObligations calculates the obligations (amount we owe to each
-    // winning staker for this fixture)
+    // fulfillFixturePayoutObligations 
     function fulfillFixturePayoutObligations(
-        string memory fixtureID,
-        SportsBettingLib.BetType result,
-        uint256 winningAmount,
-        uint256 totalAmount
+        string memory fixtureID
     ) internal {
-        if (bettingState[fixtureID] != BettingState.FULFILLING) {
-            revert("Bet state not FULFILLING.");
-        }
+        require(
+            bettingState[fixtureID] == BettingState.CALCULATED,
+            "Bet state not CALCULATED."
+        );
+        
+        // Get result 
+        SportsBettingLib.BetType result = results[fixtureID];
 
+        // DAI interface
         IERC20 dai = IERC20(daiAddress);
 
         for (
@@ -529,28 +553,43 @@ contract SportsBetting is SportsOracleConsumer {
         ) {
             address better = historicalBetters[fixtureID][result][i];
             if (activeBetters[fixtureID][result][better]) {
-                uint256 betterAmount = amounts[fixtureID][result][better];
-
-                // Calculate better's share of winnings
-                uint256 betterObligation = betterAmount *
-                    (totalAmount / winningAmount);
-
-                // Handle commission
-                uint256 commission = (betterObligation * commissionRate) / 100;
-                commissionMap[fixtureID] += commission;
-                betterObligation -= commission;
+                // This user is no longer an active better
+                // Setting to false prevents re-entrancy attacks when .transfer() is called below
+                activeBetters[fixtureID][result][better] = false;
 
                 // Pay better
-                payouts[fixtureID][better] = betterObligation;
+                uint256 betterObligation = payouts[fixtureID][better];
                 
-                dai.transfer(better, betterObligation);
+                require(
+                    dai.transfer(better, betterObligation),
+                    "Unable to payout better"
+                );
+                
                 emit BetPayout(better, fixtureID, betterObligation);
             }
         }
+        
+        // Handle payout to owner
+        handleOwnerPayout(fixtureID, commissionMap[fixtureID]);
 
-        // Pay commission to owner
-        dai.transfer(owner, commissionMap[fixtureID]);
-        emit BetCommissionPayout(fixtureID, commissionMap[fixtureID]);
+        // State transition: CALCULATED -> PAID
+        // This is the terminal of the fixture betting workflow
+        setFixtureBettingState(fixtureID, BettingState.PAID);
+    }
+
+    function handleOwnerPayout(string memory fixtureID, uint256 amount) internal {
+        // ownerWasPaid prevents re-entrancy attacks
+        if (!ownerWasPaid[fixtureID]) {
+            ownerWasPaid[fixtureID] = true;
+
+            // Pay commission to owner
+            IERC20 dai = IERC20(daiAddress);
+            require(
+                dai.transfer(owner, amount),
+                "Unable to payout owner"
+            );
+            emit BetCommissionPayout(fixtureID, commissionMap[fixtureID]);
+        }
     }
 
     // If betting is closed but we have stakes, we pay betters back
@@ -594,7 +633,7 @@ contract SportsBetting is SportsOracleConsumer {
         string memory fixtureID,
         SportsBettingLib.BetType outcome
     ) internal view returns (uint256) {
-        uint256 amount;
+        uint256 amount = 0;
         for (
             uint256 i = 0;
             i < historicalBetters[fixtureID][outcome].length;

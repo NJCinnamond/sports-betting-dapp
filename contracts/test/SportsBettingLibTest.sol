@@ -6,9 +6,9 @@ import "../SportsBettingLib.sol";
 contract SportsBettingLibTest {
 
     function getFixtureResultFromAPIResponseTest(
-        uint256 _result
+        uint256 result
     ) public pure returns (SportsBettingLib.BetType) {
-        return SportsBettingLib.getFixtureResultFromAPIResponse(_result);
+        return SportsBettingLib.getFixtureResultFromAPIResponse(result);
     }
 
     function getLosingFixtureOutcomesTest(SportsBettingLib.BetType winningOutcome)

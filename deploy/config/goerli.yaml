@@ -1,4 +1,5 @@
 linkAddress: "0x326C977E6efc84E512bB9C30f76E30c160eD06FB"
+daiAddress: "0x97cb342cf2f6ecf48c1285fb8668f5a4237bf862"
 commissionRate: 1
 oracle:
     uri: "https://1vyuff64d9.execute-api.us-east-1.amazonaws.com/dev/premier-league/fixtures/"

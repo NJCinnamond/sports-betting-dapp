@@ -13,9 +13,15 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
 
     const { deployer } = await getNamedAccounts();
 
+    // Deploy Library
+    const sportsBettingLib = await deploy("SportsBettingLib", {
+        from: deployer,
+    })
+
     const oracleURI = deployObj.oracle.uri;
     const oracleOperatorCtx = deployObj.oracle.nodeOperatorAddress;
     const linkAddress = deployObj.linkAddress;
+    const daiAddress = deployObj.daiAddress;
     const jobID = deployObj.oracle.jobID;
     const requestFee = BigNumber.from(deployObj.oracle.requestFee); // 0.1 LINK
     const commissionRate = deployObj.commissionRate;
@@ -25,11 +31,15 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
         args: [
             oracleURI,
             oracleOperatorCtx,
+            daiAddress,
             linkAddress,
             jobID,
             requestFee,
             commissionRate
         ],
+        libraries: {
+            SportsBettingLib: sportsBettingLib.address,
+        },
         log: true,
         autoMine: true, // speed up deployment on local network (ganache, hardhat), no effect on live networks
     });

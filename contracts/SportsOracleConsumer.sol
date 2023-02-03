@@ -2,7 +2,7 @@
 pragma solidity ^0.8.12;
 
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
-import "hardhat/console.sol";
+import "./mock/IERC20.sol";
 
 /**
  * Request testnet LINK and ETH here: https://faucets.chain.link/
@@ -12,14 +12,11 @@ import "hardhat/console.sol";
 abstract contract SportsOracleConsumer is ChainlinkClient {
     using Chainlink for Chainlink.Request;
 
-    address public chainlink;
+    address public immutable chainlink;
     string public sportsOracleURI;
 
     bytes32 private jobId;
     uint256 private fee;
-
-    // multiple params returned in a single oracle response
-    string public fixtureResult;
 
     mapping(address => uint256) public userToLink;
 
@@ -93,19 +90,19 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         );
         req.add("get", string.concat(sportsOracleURI, fixtureID));
         req.add("path", "0,ko");
-        req.addInt("multiply", 1);
+        req.addInt("times", 1);
         return sendChainlinkRequest(req, fee); // MWR API.
     }
 
-    function rawFulfillFixtureKickoffTime(bytes32 _requestId, uint256 _ko)
+    function rawFulfillFixtureKickoffTime(bytes32 requestId, uint256 ko)
         public
-        recordChainlinkFulfillment(_requestId)
+        recordChainlinkFulfillment(requestId)
     {
         require(msg.sender == chainlink, "Only ChainlinkClient can fulfill");
-        fulfillFixtureKickoffTime(_requestId, _ko);
+        fulfillFixtureKickoffTime(requestId, ko);
     }
 
-    function fulfillFixtureKickoffTime(bytes32 _requestId, uint256 _ko)
+    function fulfillFixtureKickoffTime(bytes32 requestId, uint256 ko)
         internal
         virtual;
 
@@ -127,25 +124,25 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         );
         req.add("get", string.concat(sportsOracleURI, fixtureID));
         req.add("path", "0,result");
-        req.addInt("multiply", 1);
+        req.addInt("times", 1);
         return sendChainlinkRequest(req, fee); // MWR API.
     }
 
-    function rawFulfillFixtureResult(bytes32 _requestId, uint256 _result)
+    function rawFulfillFixtureResult(bytes32 requestId, uint256 result)
         public
-        recordChainlinkFulfillment(_requestId)
+        recordChainlinkFulfillment(requestId)
     {
         require(msg.sender == chainlink, "Only ChainlinkClient can fulfill");
-        fulfillFixtureResult(_requestId, _result);
+        fulfillFixtureResult(requestId, result);
     }
 
-    function fulfillFixtureResult(bytes32 _requestId, uint256 _result)
+    function fulfillFixtureResult(bytes32 requestId, uint256 result)
         internal
         virtual;
 
     // Anybody can transfer LINK to ctx
     function transferLink(uint256 amount) public {
-        LinkTokenInterface link = LinkTokenInterface(chainlinkTokenAddress());
+        IERC20 link = IERC20(chainlinkTokenAddress());
         require(
             link.transferFrom(msg.sender, address(this), amount),
             "Unable to transfer"
@@ -161,7 +158,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         require(amount <= userToLink[msg.sender], "You don't have enough link");
         userToLink[msg.sender] -= amount;
 
-        LinkTokenInterface link = LinkTokenInterface(chainlinkTokenAddress());
+        IERC20 link = IERC20(chainlinkTokenAddress());
         require(link.transfer(msg.sender, amount), "Unable to transfer");
     }
 }

@@ -1,0 +1,79 @@
+{
+  "address": "0x39341B78a5eEF806eE0Acc28Cca8Bd4f5b09A286",
+  "abi": [
+    {
+      "inputs": [
+        {
+          "internalType": "uint256",
+          "name": "_result",
+          "type": "uint256"
+        }
+      ],
+      "name": "getFixtureResultFromAPIResponse",
+      "outputs": [
+        {
+          "internalType": "enum SportsBettingLib.BetType",
+          "name": "",
+          "type": "SportsBettingLib.BetType"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    },
+    {
+      "inputs": [
+        {
+          "internalType": "enum SportsBettingLib.BetType",
+          "name": "winningOutcome",
+          "type": "SportsBettingLib.BetType"
+        }
+      ],
+      "name": "getLosingFixtureOutcomes",
+      "outputs": [
+        {
+          "internalType": "enum SportsBettingLib.BetType[]",
+          "name": "",
+          "type": "SportsBettingLib.BetType[]"
+        }
+      ],
+      "stateMutability": "pure",
+      "type": "function"
+    }
+  ],
+  "transactionHash": "0x953bba311b0793ad02b3cac154622d71b5bcdc56671178fe507ef42656140979",
+  "receipt": {
+    "to": null,
+    "from": "0x07401CC21ccA4Af0f4a50f7dfcCE4c795F671cD7",
+    "contractAddress": "0x39341B78a5eEF806eE0Acc28Cca8Bd4f5b09A286",
+    "transactionIndex": 34,
+    "gasUsed": "236495",
+    "logsBloom": "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+    "blockHash": "0x99af53f23feaf0914b968a72423b673e050c891c67a2ab201099b92ce2a5632e",
+    "transactionHash": "0x953bba311b0793ad02b3cac154622d71b5bcdc56671178fe507ef42656140979",
+    "logs": [],
+    "blockNumber": 8393811,
+    "cumulativeGasUsed": "7491882",
+    "status": 1,
+    "byzantium": true
+  },
+  "args": [],
+  "numDeployments": 1,
+  "solcInputHash": "e427f66985e3f46f5c1c99e188272dd6",
+  "metadata": "{\"compiler\":{\"version\":\"0.8.12+commit.f00d7308\"},\"language\":\"Solidity\",\"output\":{\"abi\":[{\"inputs\":[{\"internalType\":\"uint256\",\"name\":\"_result\",\"type\":\"uint256\"}],\"name\":\"getFixtureResultFromAPIResponse\",\"outputs\":[{\"internalType\":\"enum SportsBettingLib.BetType\",\"name\":\"\",\"type\":\"SportsBettingLib.BetType\"}],\"stateMutability\":\"pure\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"enum SportsBettingLib.BetType\",\"name\":\"winningOutcome\",\"type\":\"SportsBettingLib.BetType\"}],\"name\":\"getLosingFixtureOutcomes\",\"outputs\":[{\"internalType\":\"enum SportsBettingLib.BetType[]\",\"name\":\"\",\"type\":\"SportsBettingLib.BetType[]\"}],\"stateMutability\":\"pure\",\"type\":\"function\"}],\"devdoc\":{\"kind\":\"dev\",\"methods\":{},\"version\":1},\"userdoc\":{\"kind\":\"user\",\"methods\":{},\"version\":1}},\"settings\":{\"compilationTarget\":{\"contracts/SportsBettingLib.sol\":\"SportsBettingLib\"},\"evmVersion\":\"london\",\"libraries\":{},\"metadata\":{\"bytecodeHash\":\"ipfs\",\"useLiteralContent\":true},\"optimizer\":{\"enabled\":true,\"runs\":1000},\"remappings\":[]},\"sources\":{\"contracts/SportsBettingLib.sol\":{\"content\":\"//SPDX-License-Identifier: Unlicense\\r\\npragma solidity ^0.8.12;\\r\\n\\r\\nlibrary SportsBettingLib {\\r\\n    // Define DEFAULT BetType = 0. \\r\\n    // DEFAULT BetType is actually invalid and acts a placeholder to catch erroneous\\r\\n    // betType entries, as Solidity interprets null values as 0.\\r\\n    enum BetType {\\r\\n        DEFAULT,\\r\\n        HOME,\\r\\n        DRAW,\\r\\n        AWAY\\r\\n    }\\r\\n\\r\\n    function getFixtureResultFromAPIResponse(\\r\\n        uint256 _result\\r\\n    ) external pure returns (BetType) {\\r\\n        if (_result == uint256(BetType.HOME)) {\\r\\n            return BetType.HOME;\\r\\n        } else if (_result == uint256(BetType.DRAW)) {\\r\\n            return BetType.DRAW;\\r\\n        } else if (_result == uint256(BetType.AWAY)) {\\r\\n            return BetType.AWAY;\\r\\n        }\\r\\n        return BetType.DEFAULT;\\r\\n    }\\r\\n\\r\\n    function getLosingFixtureOutcomes(BetType winningOutcome)\\r\\n        external\\r\\n        pure\\r\\n        returns (BetType[] memory)\\r\\n    {\\r\\n        BetType[] memory losingOutcomes = new BetType[](2);\\r\\n\\r\\n        uint256 losingOutcomesIndex = 0;\\r\\n        for (uint256 i = 0; i <= uint256(BetType.AWAY); i++) {\\r\\n            if (BetType(i) != winningOutcome && BetType(i) != BetType.DEFAULT) {\\r\\n                losingOutcomes[losingOutcomesIndex] = BetType(i);\\r\\n                losingOutcomesIndex += 1;\\r\\n            }\\r\\n        }\\r\\n        return losingOutcomes;\\r\\n    }\\r\\n}\",\"keccak256\":\"0xcf6ed2d0d2188e3da118ddc38d7c0b656e8458edf7a2aabf60141b3f5e50db7c\",\"license\":\"Unlicense\"}},\"version\":1}",
+  "bytecode": "0x61035061003a600b82828239805160001a60731461002d57634e487b7160e01b600052600060045260246000fd5b30600052607381538281f3fe73000000000000000000000000000000000000000030146080604052600436106100405760003560e01c8063233927df146100455780633af625ae1461006e575b600080fd5b6100586100533660046101e3565b61008e565b6040516100659190610243565b60405180910390f35b61008161007c36600461028e565b6101a6565b60405161006591906102a7565b604080516002808252606080830184529260009291906020830190803683370190505090506000805b6003811161019d578460038111156100d1576100d161020b565b8160038111156100e3576100e361020b565b60038111156100f4576100f461020b565b14158015610125575060008160038111156101115761011161020b565b60038111156101225761012261020b565b14155b1561018b5780600381111561013c5761013c61020b565b83838151811061014e5761014e6102bb565b602002602001019060038111156101675761016761020b565b9081600381111561017a5761017a61020b565b9052506101886001836102e7565b91505b80610195816102ff565b9150506100b7565b50909392505050565b600060018214156101b957506001919050565b60028214156101ca57506002919050565b60038214156101db57506003919050565b506000919050565b6000602082840312156101f557600080fd5b81356004811061020457600080fd5b9392505050565b634e487b7160e01b600052602160045260246000fd5b6004811061023f57634e487b7160e01b600052602160045260246000fd5b9052565b6020808252825182820181905260009190848201906040850190845b8181101561028257610272838551610221565b928401929184019160010161025f565b50909695505050505050565b6000602082840312156102a057600080fd5b5035919050565b602081016102b58284610221565b92915050565b634e487b7160e01b600052603260045260246000fd5b634e487b7160e01b600052601160045260246000fd5b600082198211156102fa576102fa6102d1565b500190565b6000600019821415610313576103136102d1565b506001019056fea2646970667358221220b051736a0f8ec9b9cceecbc8b280ab6b10b2483e36046b0b13712d2759a4296864736f6c634300080c0033",
+  "deployedBytecode": "0x73000000000000000000000000000000000000000030146080604052600436106100405760003560e01c8063233927df146100455780633af625ae1461006e575b600080fd5b6100586100533660046101e3565b61008e565b6040516100659190610243565b60405180910390f35b61008161007c36600461028e565b6101a6565b60405161006591906102a7565b604080516002808252606080830184529260009291906020830190803683370190505090506000805b6003811161019d578460038111156100d1576100d161020b565b8160038111156100e3576100e361020b565b60038111156100f4576100f461020b565b14158015610125575060008160038111156101115761011161020b565b60038111156101225761012261020b565b14155b1561018b5780600381111561013c5761013c61020b565b83838151811061014e5761014e6102bb565b602002602001019060038111156101675761016761020b565b9081600381111561017a5761017a61020b565b9052506101886001836102e7565b91505b80610195816102ff565b9150506100b7565b50909392505050565b600060018214156101b957506001919050565b60028214156101ca57506002919050565b60038214156101db57506003919050565b506000919050565b6000602082840312156101f557600080fd5b81356004811061020457600080fd5b9392505050565b634e487b7160e01b600052602160045260246000fd5b6004811061023f57634e487b7160e01b600052602160045260246000fd5b9052565b6020808252825182820181905260009190848201906040850190845b8181101561028257610272838551610221565b928401929184019160010161025f565b50909695505050505050565b6000602082840312156102a057600080fd5b5035919050565b602081016102b58284610221565b92915050565b634e487b7160e01b600052603260045260246000fd5b634e487b7160e01b600052601160045260246000fd5b600082198211156102fa576102fa6102d1565b500190565b6000600019821415610313576103136102d1565b506001019056fea2646970667358221220b051736a0f8ec9b9cceecbc8b280ab6b10b2483e36046b0b13712d2759a4296864736f6c634300080c0033",
+  "devdoc": {
+    "kind": "dev",
+    "methods": {},
+    "version": 1
+  },
+  "userdoc": {
+    "kind": "user",
+    "methods": {},
+    "version": 1
+  },
+  "storageLayout": {
+    "storage": [],
+    "types": null
+  }
+}

@@ -13,13 +13,13 @@ library SportsBettingLib {
     }
 
     function getFixtureResultFromAPIResponse(
-        uint256 _result
+        uint256 result
     ) external pure returns (BetType) {
-        if (_result == uint256(BetType.HOME)) {
+        if (result == uint256(BetType.HOME)) {
             return BetType.HOME;
-        } else if (_result == uint256(BetType.DRAW)) {
+        } else if (result == uint256(BetType.DRAW)) {
             return BetType.DRAW;
-        } else if (_result == uint256(BetType.AWAY)) {
+        } else if (result == uint256(BetType.AWAY)) {
             return BetType.AWAY;
         }
         return BetType.DEFAULT;

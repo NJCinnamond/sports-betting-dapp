@@ -11,8 +11,7 @@ contract SportsBettingTest is SportsBetting {
         address _dai,
         address _link,
         string memory _jobId,
-        uint256 _fee,
-        uint256 _commissionRate
+        uint256 _fee
     )
         SportsBetting(
             _sportsOracleURI,
@@ -20,8 +19,7 @@ contract SportsBettingTest is SportsBetting {
             _dai,
             _link,
             _jobId,
-            _fee,
-            _commissionRate
+            _fee
         )
     {}
 
@@ -64,17 +62,17 @@ contract SportsBettingTest is SportsBetting {
         handleClosingBetsForFixture(fixtureID);
     }
 
-    function shouldHaveCorrectBettingStateTest(string memory fixtureID) public {
+    /*function shouldHaveCorrectBettingStateTest(string memory fixtureID) public {
         shouldHaveCorrectBettingState(fixtureID);
-    }
+    }*/
 
-    function updateKickoffTimeTest(string memory fixtureID, uint256 _ko)
+    function updateKickoffTimeTest(string memory fixtureID, uint256 ko)
         public
     {
-        updateKickoffTime(fixtureID, _ko);
+        updateKickoffTime(fixtureID, ko);
     }
 
-    function fulfillFixturePayoutObligationsTest(
+    /*function fulfillFixturePayoutObligationsTest(
         string memory fixtureID,
         SportsBettingLib.BetType result,
         uint256 winningAmount,
@@ -86,7 +84,7 @@ contract SportsBettingTest is SportsBetting {
             winningAmount,
             totalAmount
         );
-    }
+    }*/
 
     function getTotalAmountBetOnFixtureOutcomesTest(
         string memory fixtureID,
@@ -95,11 +93,11 @@ contract SportsBettingTest is SportsBetting {
         return getTotalAmountBetOnFixtureOutcomes(fixtureID, outcomes);
     }
 
-    function updateFixtureResultTest(string memory fixtureID, uint256 _result)
+    /*function updateFixtureResultTest(string memory fixtureID, uint256 _result)
         public
     {
         updateFixtureResult(fixtureID, _result);
-    }
+    }*/
 
     function removeStakeStateTest(
         string memory fixtureID,
