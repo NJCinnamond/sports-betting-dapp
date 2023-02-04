@@ -2,11 +2,14 @@
 pragma solidity ^0.8.12;
 
 library SportsBettingLib {
-    // Define DEFAULT BetType = 0. 
-    // DEFAULT BetType is actually invalid and acts a placeholder to catch erroneous
-    // betType entries, as Solidity interprets null values as 0.
-    enum BetType {
+    // Define DEFAULT FixtureResult = 0. 
+    // DEFAULT FixtureResult is actually invalid and acts a placeholder to catch erroneous
+    // FixtureResult entries, as Solidity interprets null values as 0.
+    // CANCELLED FixtureResult allows us to handle cases where sports fixtures are cancelled
+    // and we should allow all stakers to withdraw their stakes
+    enum FixtureResult {
         DEFAULT,
+        CANCELLED,
         HOME,
         DRAW,
         AWAY
@@ -14,28 +17,28 @@ library SportsBettingLib {
 
     function getFixtureResultFromAPIResponse(
         uint256 result
-    ) external pure returns (BetType) {
-        if (result == uint256(BetType.HOME)) {
-            return BetType.HOME;
-        } else if (result == uint256(BetType.DRAW)) {
-            return BetType.DRAW;
-        } else if (result == uint256(BetType.AWAY)) {
-            return BetType.AWAY;
+    ) external pure returns (FixtureResult) {
+        if (result == uint256(FixtureResult.HOME)) {
+            return FixtureResult.HOME;
+        } else if (result == uint256(FixtureResult.DRAW)) {
+            return FixtureResult.DRAW;
+        } else if (result == uint256(FixtureResult.AWAY)) {
+            return FixtureResult.AWAY;
         }
-        return BetType.DEFAULT;
+        return FixtureResult.DEFAULT;
     }
 
-    function getLosingFixtureOutcomes(BetType winningOutcome)
+    function getLosingFixtureOutcomes(FixtureResult winningOutcome)
         external
         pure
-        returns (BetType[] memory)
+        returns (FixtureResult[] memory)
     {
-        BetType[] memory losingOutcomes = new BetType[](2);
+        FixtureResult[] memory losingOutcomes = new FixtureResult[](2);
 
         uint256 losingOutcomesIndex = 0;
-        for (uint256 i = 0; i <= uint256(BetType.AWAY); i++) {
-            if (BetType(i) != winningOutcome && BetType(i) != BetType.DEFAULT) {
-                losingOutcomes[losingOutcomesIndex] = BetType(i);
+        for (uint256 i = uint256(FixtureResult.HOME); i <= uint256(FixtureResult.AWAY); i++) {
+            if (FixtureResult(i) != winningOutcome) {
+                losingOutcomes[losingOutcomesIndex] = FixtureResult(i);
                 losingOutcomesIndex += 1;
             }
         }

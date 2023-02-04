@@ -7,16 +7,13 @@ import "./SportsBettingLib.sol";
 
 contract SportsBetting is SportsOracleConsumer {
 
-    // RESULT_RECEIVED <- FULFILLING
-    // PAID <- (NEW)
     enum BettingState {
         CLOSED,
         OPENING,
         OPEN,
         AWAITING,
-        RESULT_RECEIVED,
-        CALCULATED,
-        PAID
+        PAYABLE,
+        CANCELLED
     }
 
     struct FixtureEnrichment {
@@ -31,14 +28,14 @@ contract SportsBetting is SportsOracleConsumer {
         address indexed better,
         string fixtureID,
         uint256 amount,
-        SportsBettingLib.BetType betType
+        SportsBettingLib.FixtureResult betType
     );
 
     event BetUnstaked(
         address indexed better,
         string fixtureID,
         uint256 amount,
-        SportsBettingLib.BetType betType
+        SportsBettingLib.FixtureResult betType
     );
 
     event BetPayoutFulfillmentError(string fixtureID, string reason);
@@ -49,16 +46,16 @@ contract SportsBetting is SportsOracleConsumer {
 
     event KickoffTimeUpdated(string fixtureID, uint256 kickoffTime);
 
-    SportsBettingLib.BetType[4] public betTypes;
+    SportsBettingLib.FixtureResult[5] public betTypes;
 
     // Contract owner
     address public immutable owner;
 
-    // Entrance fee of 0.0001 DAI (10^14 Wei)
-    uint256 public constant ENTRANCE_FEE = 10**14;
-
     // DAI Stablecoin address
     address public immutable daiAddress;
+
+    // Entrance fee of 0.0001 DAI (10^14 Wei)
+    uint256 public constant ENTRANCE_FEE = 10**14;
 
     // Commission rate percentage taken by contract owner for each payout as a percentage
     uint256 public constant COMMISSION_RATE = 1;
@@ -66,57 +63,63 @@ contract SportsBetting is SportsOracleConsumer {
     // Max time before a fixture kick-off that a bet can be placed in seconds
     // A fixture bet state will not move to OPEN before a time to the left of the
     // ko time equal to BET_ADVANCE_TIME
-    uint256 public constant BET_ADVANCE_TIME = 7 * 24 * 60 * 60;
+    uint256 public constant BET_ADVANCE_TIME = 7 days; // 7 days
 
     // Cut off time for bets before KO time in seconds
     // i.e. all bets must be placed at time t where t < koTime - BET_CUTOFF_TIME
-    uint256 public constant BET_CUTOFF_TIME = 90 * 60; // 90 minutes
+    uint256 public constant BET_CUTOFF_TIME = 90 minutes; // 90 minutes
+
+    // Map each fixture ID to whether betting is open for this fixture
+    mapping(string => BettingState) public bettingState;
+
+    // Map each fixture ID to a map of FixtureResult to a map of address to uint representing the amount of wei bet on that result
+    mapping(string => mapping(SportsBettingLib.FixtureResult => mapping(address => uint256)))
+        public amounts;
+
+    // Map each fixture ID to a map of FixtureResult to a uint representing the total amount of wei bet on that result
+    mapping(string => mapping(SportsBettingLib.FixtureResult => uint256))
+        public totalAmounts;
+
+    // Map each fixture ID to a map of address to amount the ctx paid the address owner for that fixture
+    mapping(string => mapping(address => uint256)) public payouts;
+
+    // Map each user address to fixture ID to boolean representing whether they were paid for a fixture
+    mapping(string => mapping(address => bool)) public userWasPaid;
+
+    // Map oracle request ID for fixture kickoff time request to corresponding fixture ID
+    mapping(bytes32 => string) public requestKickoffToFixture;
+
+    // Map each fixture ID to unix timestamp for its kickoff time
+    mapping(string => uint256) public fixtureToKickoffTime;
+
+    // Map oracle request ID for fixture result request to corresponding fixture ID
+    mapping(bytes32 => string) public requestResultToFixture;
+
+    // Map fixture ID to fixture result
+    mapping(string => SportsBettingLib.FixtureResult) public results;
 
     // Commission total taken by contract owner indexed by fixture
     mapping(string => uint256) public commissionMap;
 
-    // Map fixture ID to fixture result
-    mapping(string => SportsBettingLib.BetType) public results;
+    // Map of fixture ID to whether commission was paid to owner for this fixture
+    mapping(string => bool) public commissionPaid;
 
-    // Map each fixture ID to a map of BetType to an array of all addresses that have ever placed
+    // Map each fixture ID to a map of FixtureResult to an array of all addresses that have ever placed
     // bets for that fixture-result pair
-    mapping(string => mapping(SportsBettingLib.BetType => address[])) public historicalBetters;
+    mapping(string => mapping(SportsBettingLib.FixtureResult => address[])) public historicalBetters;
 
     // We want to store unique addresses in historicalBetters mapping.
     // Solidity has no native set type, so we keep a mapping of address to fixture type to bet type
     // to index in historicalBetters
     // We only append an address to historicalBetters if it does not have an existing index
-    mapping(string => mapping(SportsBettingLib.BetType => mapping(address => uint256)))
+    mapping(string => mapping(SportsBettingLib.FixtureResult => mapping(address => uint256)))
         public historicalBettersIndex;
 
     // activeBetters represents all addresses who currently have an amount staked on a fixture-result
     // The mapping(address => bool) pattern allows us to set address to true or false if an address
     // stakes/unstakes for that bet, and allows safer 'contains' methods on the betters
-    mapping(string => mapping(SportsBettingLib.BetType => mapping(address => bool)))
+    mapping(string => mapping(SportsBettingLib.FixtureResult => mapping(address => bool)))
         public activeBetters;
-
-    // Map each fixture ID to a map of BetType to a map of address to uint representing the amount of wei bet on that result
-    mapping(string => mapping(SportsBettingLib.BetType => mapping(address => uint256)))
-        public amounts;
-
-    // Map each fixture ID to a map of address to amount the ctx paid the address owner for that fixture
-    mapping(string => mapping(address => uint256)) public payouts;
-
-    // Map each fixture ID to whether betting is open for this fixture
-    mapping(string => BettingState) public bettingState;
-
-    // Map each fixture ID to unix timestamp for its kickoff time
-    mapping(string => uint256) public fixtureToKickoffTime;
-
-    // Map oracle request ID for fixture kickoff time request to corresponding fixture ID
-    mapping(bytes32 => string) public requestKickoffToFixture;
-
-    // Map oracle request ID for fixture result request to corresponding fixture ID
-    mapping(bytes32 => string) public requestResultToFixture;
-
-    // ownerWasPaid maps fixture ID to boolean indicating whether owner has already received payout for fixture
-    // This prevents re-entrancy attacks where the owner can claim multiple payouts in case of fixture with no winners
-    mapping(string => bool) public ownerWasPaid;
 
     constructor(
         string memory _sportsOracleURI,
@@ -126,85 +129,14 @@ contract SportsBetting is SportsOracleConsumer {
         string memory _jobId,
         uint256 _fee
     ) SportsOracleConsumer(_sportsOracleURI, _oracle, _link, _jobId, _fee) {
-        betTypes[0] = SportsBettingLib.BetType.DEFAULT;
-        betTypes[1] = SportsBettingLib.BetType.HOME;
-        betTypes[2] = SportsBettingLib.BetType.DRAW;
-        betTypes[3] = SportsBettingLib.BetType.AWAY;
+        betTypes[0] = SportsBettingLib.FixtureResult.DEFAULT;
+        betTypes[1] = SportsBettingLib.FixtureResult.CANCELLED;
+        betTypes[2] = SportsBettingLib.FixtureResult.HOME;
+        betTypes[3] = SportsBettingLib.FixtureResult.DRAW;
+        betTypes[4] = SportsBettingLib.FixtureResult.AWAY;
 
         owner = msg.sender;
         daiAddress = _dai;
-    }
-
-    function initializeHistoricalBetters(string memory fixtureID) internal {
-        for (uint256 i = 0; i < betTypes.length; i++) {
-            initializeHistoricalBettersForBetType(fixtureID, betTypes[i]);
-        }
-    }
-
-    function initializeHistoricalBettersForBetType(
-        string memory fixtureID,
-        SportsBettingLib.BetType betType
-    ) internal {
-        // This code initializes our map for historical betters in fixture
-        // It ensures we can reliably track only unique betters for fixture
-        historicalBetters[fixtureID][betType] = [address(0x0)];
-    }
-
-    function isHistoricalBetter(
-        string memory fixtureID,
-        SportsBettingLib.BetType betType,
-        address staker
-    ) internal view returns (bool) {
-        // address 0x0 is not valid if pos is 0 is not in the array
-        if (
-            staker != address(0x0) &&
-            historicalBettersIndex[fixtureID][betType][staker] > 0
-        ) {
-            return true;
-        }
-        return false;
-    }
-
-    function addHistoricalBetter(
-        string memory fixtureID,
-        SportsBettingLib.BetType betType,
-        address staker
-    ) internal {
-        if (!isHistoricalBetter(fixtureID, betType, staker)) {
-            historicalBettersIndex[fixtureID][betType][
-                staker
-            ] = historicalBetters[fixtureID][betType].length;
-            historicalBetters[fixtureID][betType].push(staker);
-        }
-    }
-
-    function getEnrichedFixtureData(string memory fixtureID, address user)
-        public
-        view
-        returns (FixtureEnrichment memory)
-    {
-        return
-            FixtureEnrichment({
-                fixtureState: bettingState[fixtureID],
-                user: getStakeSummaryForUser(fixtureID, user),
-                total: [
-                    getTotalAmountBetOnFixtureOutcome(fixtureID, SportsBettingLib.BetType.HOME),
-                    getTotalAmountBetOnFixtureOutcome(fixtureID, SportsBettingLib.BetType.DRAW),
-                    getTotalAmountBetOnFixtureOutcome(fixtureID, SportsBettingLib.BetType.AWAY)
-                ]
-            });
-    }
-
-    function getStakeSummaryForUser(string memory fixtureID, address user)
-        internal
-        view
-        returns (uint256[3] memory)
-    {
-        return [
-            amounts[fixtureID][SportsBettingLib.BetType.HOME][user],
-            amounts[fixtureID][SportsBettingLib.BetType.DRAW][user],
-            amounts[fixtureID][SportsBettingLib.BetType.AWAY][user]
-        ];
     }
 
     // Wrapper for setting fixture betting state and emitting event
@@ -233,7 +165,6 @@ contract SportsBetting is SportsOracleConsumer {
             "Fixture ineligible to be closed."
         );
         setFixtureBettingState(fixtureID, BettingState.CLOSED);
-        handleClosingBetsForFixture(fixtureID);
     }
 
     // openBetForFixture makes an API call to oracle. It is expected that this
@@ -284,9 +215,12 @@ contract SportsBetting is SportsOracleConsumer {
         // current time is more than BET_CUTOFF_TIME before kickoff time AND
         // current time is less than BET_ADVANCE_TIME before kickoff time
         return (
-            bettingState[fixtureID] == BettingState.OPENING &&
-            block.timestamp <= ko - BET_CUTOFF_TIME &&
-            block.timestamp >= ko - BET_ADVANCE_TIME
+            ko == 0 ||
+            (
+                bettingState[fixtureID] == BettingState.OPENING &&
+                block.timestamp <= ko - BET_CUTOFF_TIME &&
+                block.timestamp >= ko - BET_ADVANCE_TIME
+            )
         );
     }
 
@@ -298,57 +232,45 @@ contract SportsBetting is SportsOracleConsumer {
             // current time is to the right of kickoff time - BET_CUTOFF_TIME
             // OR
             // current time is to the left of kickoff time - BET_ADVANCE_TIME
-            (
-                bettingState[fixtureID] == BettingState.OPENING &&
-                (block.timestamp > ko - BET_CUTOFF_TIME ||
-                    block.timestamp < ko - BET_ADVANCE_TIME)
-            ) || 
-            // OPEN/AWAITING -> CLOSED
-            // If fixture is OPEN or AWAITING, it will become CLOSED if
-            // current time is more than BET_ADVANCE_TIME to the left of ko
-            (
-                (bettingState[fixtureID] == BettingState.OPEN ||
-                    bettingState[fixtureID] == BettingState.AWAITING) &&
-                block.timestamp < ko - BET_ADVANCE_TIME
-            )
-            // NOTE: Fixture cannot be closed from RESULT_RECEIVED or PAID state
+            bettingState[fixtureID] == BettingState.OPENING &&
+            (block.timestamp > ko - BET_CUTOFF_TIME ||
+                block.timestamp < ko - BET_ADVANCE_TIME)
         );
     }
 
-    function stake(string memory fixtureID, SportsBettingLib.BetType betType, uint256 amount) public {
+    function stake(string memory fixtureID, SportsBettingLib.FixtureResult betType, uint256 amount) public {
         // Don't allow stakes if we should be in AWAITING state
         if (fixtureShouldBecomeAwaiting(fixtureID)) {
             setFixtureBettingState(fixtureID, BettingState.AWAITING);
             return;
         }
 
+        // Impose requirements
         require(
-            betType != SportsBettingLib.BetType.DEFAULT,
-            "This BetType is not permitted."
-        );
-        require(
-            bettingState[fixtureID] == BettingState.OPEN,
-            "Bet activity is not open."
-        );
+            betType != SportsBettingLib.FixtureResult.DEFAULT && betType != SportsBettingLib.FixtureResult.CANCELLED, 
+            "This BetType is not permitted.");
+        require(bettingState[fixtureID] == BettingState.OPEN, "Bet activity is not open.");
         require(amount >= ENTRANCE_FEE, "Amount is below entrance fee.");
 
+        // Update state
         amounts[fixtureID][betType][msg.sender] += amount;
+        totalAmounts[fixtureID][betType] += amount;
         addHistoricalBetter(fixtureID, betType, msg.sender);
         activeBetters[fixtureID][betType][msg.sender] = true;
 
         // Transfer DAI tokens
+        emit BetStaked(msg.sender, fixtureID, amount, betType);
         IERC20 dai = IERC20(daiAddress);
         require(
             dai.transferFrom(msg.sender, address(this), amount),
             "Unable to transfer"
         );
-        emit BetStaked(msg.sender, fixtureID, amount, betType);
     }
 
-    // Removes all stake in fixtureID-BetType combo
+    // Removes all stake in fixtureID-FixtureResult combo
     function unstake(
         string memory fixtureID,
-        SportsBettingLib.BetType betType,
+        SportsBettingLib.FixtureResult betType,
         uint256 amount
     ) public {
         // Don't allow stakes if we should be in AWAITING state
@@ -356,53 +278,33 @@ contract SportsBetting is SportsOracleConsumer {
             setFixtureBettingState(fixtureID, BettingState.AWAITING);
             return;
         }
-        require(
-            bettingState[fixtureID] == BettingState.OPEN,
-            "Bet activity is not open."
-        );
 
+        // Impose requirements on unstake value
+        require(bettingState[fixtureID] == BettingState.OPEN, "Bet activity is not open.");
         require(amount > 0, "Amount should exceed zero.");
-        require(
-            bettingState[fixtureID] == BettingState.OPEN,
-            "Fixture is not in Open state."
-        );
-        handleUnstake(fixtureID, betType, amount, msg.sender);
-    }
+        require(bettingState[fixtureID] == BettingState.OPEN, "Fixture is not in Open state.");
 
-    // Execute business logic to unstake parameter amount to staker
-    function handleUnstake(
-        string memory fixtureID,
-        SportsBettingLib.BetType betType,
-        uint256 amount,
-        address staker
-    ) internal {
-        removeStakeState(fixtureID, betType, amount, staker);
-
-        // Transfer DAI to msg sender
-        IERC20 dai = IERC20(daiAddress);
-        require(dai.transfer(msg.sender, amount), "Unable to unstake");
-
-        emit BetUnstaked(staker, fixtureID, amount, betType);
-    }
-
-    function removeStakeState(
-        string memory fixtureID,
-        SportsBettingLib.BetType betType,
-        uint256 amount,
-        address staker
-    ) internal {
-        uint256 amountStaked = amounts[fixtureID][betType][staker];
+        // Impose requirements on user's stake if this unstake occurs
+        uint256 amountStaked = amounts[fixtureID][betType][msg.sender];
         require(amountStaked > 0, "No stake on this address-result.");
         require(amount <= amountStaked, "Current stake too low.");
-        require(amountStaked - amount >= ENTRANCE_FEE, "Cannot go below entrance fee.");
-
-        // Update stake amount
-        amounts[fixtureID][betType][staker] = amountStaked - amount;
-
-        // If non-partial unstake, caller is no longer an active staker
-        if (amounts[fixtureID][betType][staker] <= 0) {
-            activeBetters[fixtureID][betType][staker] = false;
+        // If this is a non-partial unstake, ensure ENTRANCE_FEE is maintained
+        if (amountStaked > amount) {
+            require(amountStaked - amount >= ENTRANCE_FEE, "Cannot go below entrance fee.");
         }
+
+        // Update state
+        amounts[fixtureID][betType][msg.sender] -= amount;
+        totalAmounts[fixtureID][betType] -= amount;
+        // If non-partial unstake, caller is no longer an active staker
+        if (amounts[fixtureID][betType][msg.sender] <= 0) {
+            activeBetters[fixtureID][betType][msg.sender] = false;
+        }
+
+        // Transfer DAI to msg sender
+        emit BetUnstaked(msg.sender, fixtureID, amount, betType);
+        IERC20 dai = IERC20(daiAddress);
+        require(dai.transfer(msg.sender, amount), "Unable to unstake");
     }
 
     function requestFixtureKickoffTime(string memory fixtureID) public {
@@ -446,8 +348,8 @@ contract SportsBetting is SportsOracleConsumer {
         string memory fixtureID = requestResultToFixture[requestId];
         emit RequestFixtureResultFulfilled(requestId, fixtureID, result);
 
-        SportsBettingLib.BetType parsedResult = SportsBettingLib.getFixtureResultFromAPIResponse(result);
-        if (parsedResult == SportsBettingLib.BetType.DEFAULT) {
+        SportsBettingLib.FixtureResult parsedResult = SportsBettingLib.getFixtureResultFromAPIResponse(result);
+        if (parsedResult == SportsBettingLib.FixtureResult.DEFAULT) {
             string memory errorString = string.concat(
                 "Error on fixture ",
                 fixtureID,
@@ -461,189 +363,206 @@ contract SportsBetting is SportsOracleConsumer {
 
         // Only action on fixture result if we are in AWAITING
         if (bettingState[fixtureID] == BettingState.AWAITING) {
-            // Set fixture state to RESULT_RECEIVED
-            setFixtureBettingState(fixtureID, BettingState.RESULT_RECEIVED);
+            if (parsedResult == SportsBettingLib.FixtureResult.CANCELLED) {
+                setFixtureBettingState(fixtureID, BettingState.CANCELLED);
+            } else {
+                setFixtureBettingState(fixtureID, BettingState.PAYABLE);
+            } 
         }
     }
 
-    // calculateFixturePayout calculates the obligations (amount we owe to each
-    // winning staker for this fixture)
-    function calculateFixturePayout(string memory fixtureID)
+    function withdrawPayout(string memory fixtureID)
         public
     {
         require(
-            bettingState[fixtureID] == BettingState.RESULT_RECEIVED,
-            "State should be RESULT_RECEIVED."
+            bettingState[fixtureID] == BettingState.PAYABLE || bettingState[fixtureID] == BettingState.CANCELLED,
+            "State not PAYABLE or CANCELLED."
         );
 
-        SportsBettingLib.BetType result = results[fixtureID];
-        SportsBettingLib.BetType[] memory winningOutcomes = new SportsBettingLib.BetType[](1);
+        // Require user has not received payout for this fixture
+        require(!userWasPaid[fixtureID][msg.sender], "Already paid.");
+
+        if (bettingState[fixtureID] == BettingState.PAYABLE) {
+            handleWithdrawPayout(fixtureID);
+        } else if (bettingState[fixtureID] == BettingState.CANCELLED) {
+            handleFixtureCancelledPayout(fixtureID);
+        }
+    }
+
+    function handleWithdrawPayout(string memory fixtureID)
+        internal
+    {
+        SportsBettingLib.FixtureResult result = results[fixtureID];
+        if (result == SportsBettingLib.FixtureResult.DEFAULT || result == SportsBettingLib.FixtureResult.CANCELLED) {
+            revert("Invalid fixture result.");
+        }
+
+        // Require user had staked on winning result
+        uint256 stakerAmount = amounts[fixtureID][result][msg.sender];
+        require(stakerAmount > 0, "You did not stake on the winning outcome");
+
+        SportsBettingLib.FixtureResult[] memory winningOutcomes = new SportsBettingLib.FixtureResult[](1);
         winningOutcomes[0] = result;
+        SportsBettingLib.FixtureResult[] memory losingOutcomes = SportsBettingLib.getLosingFixtureOutcomes(result);
 
-        SportsBettingLib.BetType[] memory losingOutcomes = SportsBettingLib.getLosingFixtureOutcomes(result);
-
-        uint256 winningAmount = getTotalAmountBetOnFixtureOutcomes(
-            fixtureID,
-            winningOutcomes
-        );
-        uint256 losingAmount = getTotalAmountBetOnFixtureOutcomes(
-            fixtureID,
-            losingOutcomes
-        );
+        // Get total amounts bet on each fixture result
+        uint256 winningAmount = getTotalAmountBetOnFixtureOutcomes(fixtureID, winningOutcomes);
+        uint256 losingAmount = getTotalAmountBetOnFixtureOutcomes(fixtureID, losingOutcomes);
         uint256 totalAmount = winningAmount + losingAmount;
 
-        // If winningAmount > 0, we have winners we can pay out to
-        if (winningAmount > 0) {
-            uint256 commission = 0;
-            for (
-                uint256 i = 0;
-                i < historicalBetters[fixtureID][result].length;
-                i++
-            ) {
-                address better = historicalBetters[fixtureID][result][i];
-                if (activeBetters[fixtureID][result][better]) {
-                    uint256 betterAmount = amounts[fixtureID][result][better];
+        // Calculate staker's share of winnings
+        uint256 obligation = (stakerAmount * totalAmount) / winningAmount;
 
-                    // Calculate better's share of winnings
-                    uint256 betterObligation = (betterAmount * winningAmount) / totalAmount;
+        // Deduct owner commission
+        // Commission of COMMISSION_RATE % is taken from staker profits
+        uint256 commission = (COMMISSION_RATE * (obligation-stakerAmount)) / 100;
+        obligation -= commission;
 
-                    // Handle commission
-                    commission += (COMMISSION_RATE * betterObligation) / 100;
-                    betterObligation -= commission;
+        // Set bet payout states
+        payouts[fixtureID][msg.sender] = obligation;
+        userWasPaid[fixtureID][msg.sender] = true;
 
-                    // Set bet payout better
-                    payouts[fixtureID][better] = betterObligation;
-                }
-            }
-            commissionMap[fixtureID] = commission;
-        } else {
-            // Else total amount is paid to owner
-            commissionMap[fixtureID] =  totalAmount;
-        }
-
-        // State transition: RESULT_RECEIVED -> CALCULATED
-        // This prevents cross-function re-entrancy attacks that would allow
-        // attackers to recalculate bet payouts after is called transfer() in
-        // fulfillFixturePayoutObligations
-        setFixtureBettingState(fixtureID, BettingState.CALCULATED);
-
-        // Begin fixture payout 
-        fulfillFixturePayoutObligations(fixtureID);
-    }
-
-    // fulfillFixturePayoutObligations 
-    function fulfillFixturePayoutObligations(
-        string memory fixtureID
-    ) internal {
-        require(
-            bettingState[fixtureID] == BettingState.CALCULATED,
-            "Bet state not CALCULATED."
-        );
-        
-        // Get result 
-        SportsBettingLib.BetType result = results[fixtureID];
-
-        // DAI interface
+        // Pay staker
+        emit BetPayout(msg.sender, fixtureID, obligation);
         IERC20 dai = IERC20(daiAddress);
-
-        for (
-            uint256 i = 0;
-            i < historicalBetters[fixtureID][result].length;
-            i++
-        ) {
-            address better = historicalBetters[fixtureID][result][i];
-            if (activeBetters[fixtureID][result][better]) {
-                // This user is no longer an active better
-                // Setting to false prevents re-entrancy attacks when .transfer() is called below
-                activeBetters[fixtureID][result][better] = false;
-
-                // Pay better
-                uint256 betterObligation = payouts[fixtureID][better];
-                
-                require(
-                    dai.transfer(better, betterObligation),
-                    "Unable to payout better"
-                );
-                
-                emit BetPayout(better, fixtureID, betterObligation);
-            }
-        }
-        
-        // Handle payout to owner
-        handleOwnerPayout(fixtureID, commissionMap[fixtureID]);
-
-        // State transition: CALCULATED -> PAID
-        // This is the terminal of the fixture betting workflow
-        setFixtureBettingState(fixtureID, BettingState.PAID);
+        require(
+            dai.transfer(msg.sender, obligation),
+            "Unable to payout staker"
+        );
     }
 
-    function handleOwnerPayout(string memory fixtureID, uint256 amount) internal {
-        // ownerWasPaid prevents re-entrancy attacks
-        if (!ownerWasPaid[fixtureID]) {
-            ownerWasPaid[fixtureID] = true;
+    function handleFixtureCancelledPayout(string memory fixtureID)
+        internal
+    {
+        require(bettingState[fixtureID] == BettingState.CANCELLED, "Fixture not cancelled");
+        uint256 obligation = 0;
+        for (uint256 i = 0; i < betTypes.length; i++) {
+            obligation += amounts[fixtureID][betTypes[i]][msg.sender];
+        }
+        require(obligation > 0, "No stakes found on this fixture");
 
-            // Pay commission to owner
+        // Set bet payout states
+        payouts[fixtureID][msg.sender] = obligation;
+        userWasPaid[fixtureID][msg.sender] = true;
+
+        // Pay staker
+        emit BetPayout(msg.sender, fixtureID, obligation);
+        IERC20 dai = IERC20(daiAddress);
+        require(
+            dai.transfer(msg.sender, obligation),
+            "Unable to payout staker"
+        );
+    }
+
+    function handleCommissionPayout(string memory fixtureID) public {
+        require(bettingState[fixtureID] == BettingState.PAYABLE, "Fixture not payable");
+        require(!commissionPaid[fixtureID], "Commission already paid.");
+
+        SportsBettingLib.FixtureResult result = results[fixtureID];
+        if (result == SportsBettingLib.FixtureResult.DEFAULT || result == SportsBettingLib.FixtureResult.CANCELLED) {
+            revert("Invalid fixture result.");
+        }
+
+        // Commission of COMMISSION RATE % is taken from 
+        // TOTAL STAKER PROFITS e.g. total amount staked on losing outcommes
+        // So calculate losing amount
+        SportsBettingLib.FixtureResult[] memory losingOutcomes = SportsBettingLib.getLosingFixtureOutcomes(result);
+        uint256 losingAmount = getTotalAmountBetOnFixtureOutcomes(fixtureID, losingOutcomes);
+
+        // Calculate percentage
+        commissionMap[fixtureID] = (COMMISSION_RATE * losingAmount) / 100;
+        // Set commissionPaid to prevent re-entrancy, although we only pay is amount > 0
+        commissionPaid[fixtureID] = true;
+        emit BetCommissionPayout(fixtureID, commissionMap[fixtureID]);
+        if (commissionMap[fixtureID] > 0) {
             IERC20 dai = IERC20(daiAddress);
             require(
-                dai.transfer(owner, amount),
+                dai.transfer(owner, commissionMap[fixtureID]),
                 "Unable to payout owner"
             );
-            emit BetCommissionPayout(fixtureID, commissionMap[fixtureID]);
-        }
-    }
-
-    // If betting is closed but we have stakes, we pay betters back
-    // For each bet type for fixture, refund all stakers who staked on that bet type
-    function handleClosingBetsForFixture(string memory fixtureID) internal {
-        for (uint256 i = 0; i < betTypes.length; i++) {
-            handleClosingBetsForFixtureBetType(fixtureID, betTypes[i]);
-        }
-    }
-
-    // For a given fixture and bet type, refund all stakers their full stake amount
-    function handleClosingBetsForFixtureBetType(
-        string memory fixtureID,
-        SportsBettingLib.BetType betType
-    ) internal {
-        for (
-            uint256 i = 0;
-            i < historicalBetters[fixtureID][betType].length;
-            i++
-        ) {
-            address better = historicalBetters[fixtureID][betType][i];
-            if (activeBetters[fixtureID][betType][better]) {
-                uint256 betterAmount = amounts[fixtureID][betType][better];
-                handleUnstake(fixtureID, betType, betterAmount, better);
-            }
         }
     }
 
     function getTotalAmountBetOnFixtureOutcomes(
         string memory fixtureID,
-        SportsBettingLib.BetType[] memory outcomes
+        SportsBettingLib.FixtureResult[] memory outcomes
     ) internal view returns (uint256) {
         uint256 amount;
         for (uint256 i = 0; i < outcomes.length; i++) {
-            amount += getTotalAmountBetOnFixtureOutcome(fixtureID, outcomes[i]);
+            amount += totalAmounts[fixtureID][outcomes[i]];
         }
         return amount;
     }
 
-    function getTotalAmountBetOnFixtureOutcome(
-        string memory fixtureID,
-        SportsBettingLib.BetType outcome
-    ) internal view returns (uint256) {
-        uint256 amount = 0;
-        for (
-            uint256 i = 0;
-            i < historicalBetters[fixtureID][outcome].length;
-            i++
-        ) {
-            address better = historicalBetters[fixtureID][outcome][i];
-            if (activeBetters[fixtureID][outcome][better]) {
-                amount += amounts[fixtureID][outcome][better];
-            }
+    function initializeHistoricalBetters(string memory fixtureID) internal {
+        for (uint256 i = 0; i < betTypes.length; i++) {
+            initializeHistoricalBettersForBetType(fixtureID, betTypes[i]);
         }
-        return amount;
+    }
+
+    function initializeHistoricalBettersForBetType(
+        string memory fixtureID,
+        SportsBettingLib.FixtureResult betType
+    ) internal {
+        // This code initializes our map for historical betters in fixture
+        // It ensures we can reliably track only unique betters for fixture
+        historicalBetters[fixtureID][betType] = [address(0x0)];
+    }
+
+    function isHistoricalBetter(
+        string memory fixtureID,
+        SportsBettingLib.FixtureResult betType,
+        address staker
+    ) internal view returns (bool) {
+        // address 0x0 is not valid if pos is 0 is not in the array
+        if (
+            staker != address(0x0) &&
+            historicalBettersIndex[fixtureID][betType][staker] > 0
+        ) {
+            return true;
+        }
+        return false;
+    }
+
+    function addHistoricalBetter(
+        string memory fixtureID,
+        SportsBettingLib.FixtureResult betType,
+        address staker
+    ) internal {
+        if (!isHistoricalBetter(fixtureID, betType, staker)) {
+            historicalBettersIndex[fixtureID][betType][
+                staker
+            ] = historicalBetters[fixtureID][betType].length;
+            historicalBetters[fixtureID][betType].push(staker);
+        }
+    }
+
+    function getEnrichedFixtureData(string memory fixtureID, address user)
+        public
+        view
+        returns (FixtureEnrichment memory)
+    {
+        return
+            FixtureEnrichment({
+                fixtureState: bettingState[fixtureID],
+                user: getStakeSummaryForUser(fixtureID, user),
+                total: [
+                    totalAmounts[fixtureID][SportsBettingLib.FixtureResult.HOME],
+                    totalAmounts[fixtureID][SportsBettingLib.FixtureResult.DRAW],
+                    totalAmounts[fixtureID][SportsBettingLib.FixtureResult.AWAY]
+                ]
+            });
+    }
+
+    function getStakeSummaryForUser(string memory fixtureID, address user)
+        internal
+        view
+        returns (uint256[3] memory)
+    {
+        return [
+            amounts[fixtureID][SportsBettingLib.FixtureResult.HOME][user],
+            amounts[fixtureID][SportsBettingLib.FixtureResult.DRAW][user],
+            amounts[fixtureID][SportsBettingLib.FixtureResult.AWAY][user]
+        ];
     }
 }

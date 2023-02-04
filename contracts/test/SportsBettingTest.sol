@@ -29,14 +29,14 @@ contract SportsBettingTest is SportsBetting {
 
     function getHistoricalBettersLength(
         string memory fixtureID,
-        SportsBettingLib.BetType betType
+        SportsBettingLib.FixtureResult betType
     ) public view returns (uint256) {
         return historicalBetters[fixtureID][betType].length;
     }
 
     function setHistoricalBetters(
         string memory fixtureID,
-        SportsBettingLib.BetType betType,
+        SportsBettingLib.FixtureResult betType,
         address[] memory addresses
     ) public {
         historicalBetters[fixtureID][betType] = addresses;
@@ -56,10 +56,6 @@ contract SportsBettingTest is SportsBetting {
         BettingState state
     ) public {
         setFixtureBettingState(fixtureID, state);
-    }
-
-    function handleClosingBetsForFixtureTest(string memory fixtureID) public {
-        handleClosingBetsForFixture(fixtureID);
     }
 
     /*function shouldHaveCorrectBettingStateTest(string memory fixtureID) public {
@@ -88,7 +84,7 @@ contract SportsBettingTest is SportsBetting {
 
     function getTotalAmountBetOnFixtureOutcomesTest(
         string memory fixtureID,
-        SportsBettingLib.BetType[] memory outcomes
+        SportsBettingLib.FixtureResult[] memory outcomes
     ) public view returns (uint256) {
         return getTotalAmountBetOnFixtureOutcomes(fixtureID, outcomes);
     }
@@ -98,13 +94,4 @@ contract SportsBettingTest is SportsBetting {
     {
         updateFixtureResult(fixtureID, _result);
     }*/
-
-    function removeStakeStateTest(
-        string memory fixtureID,
-        SportsBettingLib.BetType betType,
-        uint256 amount,
-        address staker
-    ) public {
-        removeStakeState(fixtureID, betType, amount, staker);
-    }
 }
