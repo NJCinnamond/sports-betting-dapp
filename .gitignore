@@ -7,3 +7,8 @@ typechain
 #Hardhat files
 cache
 artifacts
+
+#Forge files
+out
+lib
+forge-cache

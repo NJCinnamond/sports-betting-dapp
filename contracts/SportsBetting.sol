@@ -1,8 +1,9 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.12;
 
-import "./mock/IERC20.sol";
+//import "./mock/IERC20.sol";
 import "./SportsOracleConsumer.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "./SportsBettingLib.sol";
 
 contract SportsBetting is SportsOracleConsumer {
@@ -215,7 +216,7 @@ contract SportsBetting is SportsOracleConsumer {
         // current time is more than BET_CUTOFF_TIME before kickoff time AND
         // current time is less than BET_ADVANCE_TIME before kickoff time
         return (
-            ko == 0 ||
+            ko != 0 ||
             (
                 bettingState[fixtureID] == BettingState.OPENING &&
                 block.timestamp <= ko - BET_CUTOFF_TIME &&

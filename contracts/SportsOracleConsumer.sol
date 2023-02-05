@@ -2,7 +2,8 @@
 pragma solidity ^0.8.12;
 
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
-import "./mock/IERC20.sol";
+//import "./mock/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
  * Request testnet LINK and ETH here: https://faucets.chain.link/

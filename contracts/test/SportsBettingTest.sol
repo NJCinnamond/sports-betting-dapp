@@ -5,6 +5,8 @@ import "../SportsBetting.sol";
 import "../SportsBettingLib.sol";
 
 contract SportsBettingTest is SportsBetting {
+    uint256 public linkFee;
+
     constructor(
         string memory _sportsOracleURI,
         address _oracle,
@@ -21,7 +23,27 @@ contract SportsBettingTest is SportsBetting {
             _jobId,
             _fee
         )
-    {}
+    {
+        linkFee = _fee;
+    }
+
+    function setUserToLinkCheat(address addr, uint256 amount) public {
+        userToLink[addr] = amount;
+    }
+
+    function setFixtureBettingStateCheat(
+        string memory fixtureID,
+        BettingState state
+    ) public {
+        bettingState[fixtureID] = state;
+    }
+
+    function setFixtureKickoffTimeCheat(
+        string memory fixtureID,
+        uint256 ko
+    ) public {
+        fixtureToKickoffTime[fixtureID] = ko;
+    }
 
     function initializeHistoricalBettersTest(string memory fixtureID) public {
         initializeHistoricalBetters(fixtureID);
