@@ -31,6 +31,10 @@ contract SportsBettingTest is SportsBetting {
         userToLink[addr] = amount;
     }
 
+    function setRequestKickoffToFixtureCheat(bytes32 requestId, string memory fixtureId) public {
+        requestKickoffToFixture[requestId] = fixtureId;
+    }
+
     function setFixtureBettingStateCheat(
         string memory fixtureID,
         BettingState state
@@ -83,6 +87,12 @@ contract SportsBettingTest is SportsBetting {
     /*function shouldHaveCorrectBettingStateTest(string memory fixtureID) public {
         shouldHaveCorrectBettingState(fixtureID);
     }*/
+
+    function fulfillFixtureKickoffTimeTest(bytes32 requestId, uint256 ko)
+        public
+    {
+        fulfillFixtureKickoffTime(requestId, ko);
+    }
 
     function updateKickoffTimeTest(string memory fixtureID, uint256 ko)
         public

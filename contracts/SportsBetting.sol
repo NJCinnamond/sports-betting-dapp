@@ -204,6 +204,7 @@ contract SportsBetting is SportsOracleConsumer {
         // If a bet is OPEN, it becomes AWAITING if
         // current time is more than BET_CUTOFF_TIME to the right of kickoff time
         return (
+            ko > BET_CUTOFF_TIME &&
             bettingState[fixtureID] == BettingState.OPEN &&
             block.timestamp > ko - BET_CUTOFF_TIME
         );
@@ -216,7 +217,9 @@ contract SportsBetting is SportsOracleConsumer {
         // current time is more than BET_CUTOFF_TIME before kickoff time AND
         // current time is less than BET_ADVANCE_TIME before kickoff time
         return (
-            ko != 0 ||
+            ko != 0 &&
+            ko >= BET_CUTOFF_TIME &&
+            ko >= BET_ADVANCE_TIME &&
             (
                 bettingState[fixtureID] == BettingState.OPENING &&
                 block.timestamp <= ko - BET_CUTOFF_TIME &&
@@ -234,6 +237,9 @@ contract SportsBetting is SportsOracleConsumer {
             // OR
             // current time is to the left of kickoff time - BET_ADVANCE_TIME
             bettingState[fixtureID] == BettingState.OPENING &&
+            ko != 0 &&
+            ko >= BET_CUTOFF_TIME &&
+            ko >= BET_ADVANCE_TIME &&
             (block.timestamp > ko - BET_CUTOFF_TIME ||
                 block.timestamp < ko - BET_ADVANCE_TIME)
         );
@@ -248,7 +254,8 @@ contract SportsBetting is SportsOracleConsumer {
 
         // Impose requirements
         require(
-            betType != SportsBettingLib.FixtureResult.DEFAULT && betType != SportsBettingLib.FixtureResult.CANCELLED, 
+            betType != SportsBettingLib.FixtureResult.DEFAULT && 
+            betType != SportsBettingLib.FixtureResult.CANCELLED, 
             "This BetType is not permitted.");
         require(bettingState[fixtureID] == BettingState.OPEN, "Bet activity is not open.");
         require(amount >= ENTRANCE_FEE, "Amount is below entrance fee.");
@@ -283,7 +290,6 @@ contract SportsBetting is SportsOracleConsumer {
         // Impose requirements on unstake value
         require(bettingState[fixtureID] == BettingState.OPEN, "Bet activity is not open.");
         require(amount > 0, "Amount should exceed zero.");
-        require(bettingState[fixtureID] == BettingState.OPEN, "Fixture is not in Open state.");
 
         // Impose requirements on user's stake if this unstake occurs
         uint256 amountStaked = amounts[fixtureID][betType][msg.sender];
@@ -319,6 +325,9 @@ contract SportsBetting is SportsOracleConsumer {
         override
     {
         string memory fixtureID = requestKickoffToFixture[requestId];
+        if (bytes(fixtureID).length == 0) {
+            revert("No fixture matches request ID.");
+        }
         emit RequestFixtureKickoffFulfilled(requestId, fixtureID, ko);
 
         updateKickoffTime(fixtureID, ko);
