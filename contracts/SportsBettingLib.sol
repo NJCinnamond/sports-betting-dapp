@@ -1,6 +1,8 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.12;
 
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
+
 library SportsBettingLib {
     // Define DEFAULT FixtureResult = 0. 
     // DEFAULT FixtureResult is actually invalid and acts a placeholder to catch erroneous
@@ -45,5 +47,45 @@ library SportsBettingLib {
             }
         }
         return losingOutcomes;
+    }
+
+    function calculateStakerObligation(
+        uint256 stakerAmount,
+        uint256 winningAmount,
+        uint256 totalAmount
+    ) public pure returns(uint256) {
+        bool flag;
+        uint256 stakerShare;
+        uint256 obligation;
+        (flag, stakerShare) = SafeMath.tryMul(totalAmount, stakerAmount);
+        if (!flag) {
+            revert("Overflow calculating obligation");
+        }
+        (flag, obligation) = SafeMath.tryDiv(stakerShare, winningAmount);
+        if (!flag) {
+            revert("Division by zero");
+        }
+        
+        return obligation;
+    }
+
+    function calculateCommission(
+        uint256 stakerObligation,
+        uint256 stakerAmount,
+        uint256 commissionRate
+    ) public pure returns(uint256) {
+        bool flag;
+        uint256 profit;
+        uint256 commission;
+        (flag, profit) = SafeMath.trySub(stakerObligation, stakerAmount);
+        if (!flag) {
+            revert("Underflow calculating profit");
+        }
+        (flag, commission) = SafeMath.tryMul(commissionRate, profit);
+        if (!flag) {
+            revert("Overflow calculating commission");
+        }
+        // Divide by 100 as COMMISSION_RATE is in percentage terms
+        return commission / 100;
     }
 }

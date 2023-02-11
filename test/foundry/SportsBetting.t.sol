@@ -1925,10 +1925,11 @@ contract SportsBettingTestSuite is Test, HelperContract {
     // testShouldRevertHandlePayoutOnTransferFail
     function testShouldRevertHandlePayoutOnTransferFail(
         string memory fixtureID,
-        uint256 result
+        uint256 result,
+        uint256 stakeAmount
     ) public {
-        // Bound stake amount to a positive number
-        uint256 stakeAmount = 10e9;
+        // Bound stakes
+        stakeAmount = bound(stakeAmount, 1, 10e30);
 
         // Bound fixture result to HOME, DRAW, or AWAY
         result = bound(result, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
