@@ -27,12 +27,42 @@ contract SportsBettingTest is SportsBetting {
         linkFee = _fee;
     }
 
+    function setActiveBetterCheat(
+        string memory fixtureID, 
+        SportsBettingLib.FixtureResult betType,
+        address staker,
+        bool isActive
+    ) public {
+        activeBetters[fixtureID][betType][staker] = isActive;
+    }
+
+    function setUserStakeCheat(
+        string memory fixtureID, 
+        SportsBettingLib.FixtureResult betType,
+        address staker,
+        uint256 amount
+    ) public {
+        amounts[fixtureID][betType][staker] = amount;
+    }
+
+    function setTotalStakeCheat(
+        string memory fixtureID, 
+        SportsBettingLib.FixtureResult betType,
+        uint256 amount
+    ) public {
+        totalAmounts[fixtureID][betType] = amount;
+    }
+
     function setUserToLinkCheat(address addr, uint256 amount) public {
         userToLink[addr] = amount;
     }
 
     function setRequestKickoffToFixtureCheat(bytes32 requestId, string memory fixtureId) public {
         requestKickoffToFixture[requestId] = fixtureId;
+    }
+
+    function setRequestResultToFixtureCheat(bytes32 requestId, string memory fixtureId) public {
+        requestResultToFixture[requestId] = fixtureId;
     }
 
     function setFixtureBettingStateCheat(
@@ -92,6 +122,12 @@ contract SportsBettingTest is SportsBetting {
         public
     {
         fulfillFixtureKickoffTime(requestId, ko);
+    }
+
+    function fulfillFixtureResultTest(bytes32 requestId, uint256 result) 
+        public
+    {
+        fulfillFixtureResult(requestId, result);
     }
 
     function updateKickoffTimeTest(string memory fixtureID, uint256 ko)

@@ -34,6 +34,20 @@ abstract contract HelperContract {
         uint256 kickoff
     );
 
+    event BetStaked(
+        address indexed better,
+        string fixtureID,
+        uint256 amount,
+        SportsBettingLib.FixtureResult betType
+    );
+
+    event BetUnstaked(
+        address indexed better,
+        string fixtureID,
+        uint256 amount,
+        SportsBettingLib.FixtureResult betType
+    );
+
     string constant mockURI = "mockURI";
     uint256 linkFee = 1e17; // 1e17 = 0.1 LINK
     address constant chainlinkDevRel = 0x74EcC8Bdeb76F2C6760eD2dc8A46ca5e581fA656;
@@ -42,6 +56,7 @@ abstract contract HelperContract {
     MockLINK mockLINK;
 
     address constant addr1 = 0xe58b52D74FA00f94d61C6Dcb73D79a8ea704a36B;
+    address constant addr2 = 0x07401dc21CcA4aF0f4a50f7DFCCE4c795f671cD7;
 }
 
 contract SportsBettingTestSuite is Test, HelperContract {
@@ -800,22 +815,245 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.stake(fixtureID, betType, amount);
     }
 
-    // Test staking workflow
-    // testShouldRequireEntranceFeeStake
-
     // testShouldCorrectlyUpdateContractStateOnStake
+    function testShouldCorrectlyUpdateContractStateOnStake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt,
+        uint256 addr1Amount,
+        uint256 addr2Amount
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // Bound amounts to at least entrance fee
+        addr1Amount = bound(addr1Amount, sportsBetting.ENTRANCE_FEE(), 10e19);
+        addr2Amount = bound(addr2Amount, sportsBetting.ENTRANCE_FEE(), 10e19);
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Prank addr1
+        vm.prank(addr1);
+
+        // Expect BetStaked emit
+        vm.expectEmit(true, true, true, true, address(sportsBetting));
+        // Emit the event we expect to see
+        emit BetStaked(addr1, fixtureID, addr1Amount, betType);
+
+        // Mock DAI transfer to return success
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transferFrom.selector),
+            abi.encode(true)
+        );
+
+        // Act
+        sportsBetting.stake(fixtureID, betType, addr1Amount);
+
+        // Assert addr1 is now active better
+        assertEq(sportsBetting.activeBetters(fixtureID, betType, addr1), true);
+        // Assert bet total amount is increased
+        assertEq(sportsBetting.totalAmounts(fixtureID, betType), addr1Amount);
+        // Assert staker amounts is increased
+        assertEq(sportsBetting.amounts(fixtureID, betType, addr1), addr1Amount);
+
+        // PART 2
+        // Now addr2 stakes on same bet type
+        vm.prank(addr2);
+
+        // Get total amount from both addr1 and addr2 stakes
+        uint256 totalAmount = addr1Amount + addr2Amount;
+
+        // Expect BetStaked emit
+        vm.expectEmit(true, true, true, true, address(sportsBetting));
+        // Emit the event we expect to see
+        emit BetStaked(addr2, fixtureID, addr2Amount, betType);
+
+        // Act
+        sportsBetting.stake(fixtureID, betType, addr2Amount);
+
+        // Assert addr1 is now active better
+        assertEq(sportsBetting.activeBetters(fixtureID, betType, addr2), true);
+        // Assert bet total amount is increased
+        assertEq(sportsBetting.totalAmounts(fixtureID, betType), totalAmount);
+        // Assert staker amounts is increased
+        assertEq(sportsBetting.amounts(fixtureID, betType, addr2), addr2Amount);
+    }
+
+    // testShouldRevertForArithemticOverflowOnUserStake
+    function testShouldRevertForArithemticOverflowOnUserStake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // To cause overflow, better will make two stakes that add up to more than Max(UINT256)
+        uint256 addr1Amount = 2**256 - 1;
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Prank addr1
+        vm.prank(addr1);
+
+        // Mock DAI transfer to return success (this should only be necessary for first stake call)
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transferFrom.selector),
+            abi.encode(true)
+        );
+
+        // Act once. Expect this to succeed
+        sportsBetting.stake(fixtureID, betType, addr1Amount);
+
+        // Prank addr1 again
+        vm.prank(addr1);
+
+        // Now when we stake again we expect a revert due to overflow
+        vm.expectRevert("User stake overflow.");
+
+        // Act once. Expect this to succeed
+        sportsBetting.stake(fixtureID, betType, addr1Amount);
+    }
+
+    // testShouldRevertForArithemticOverflowOnTotalStake
+    function testShouldRevertForArithemticOverflowOnTotalStake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // To cause overflow on total stake map, addr1 better will make one stake equal to Max(UINT256) -1
+        // and then addr2 will make a stake of equal value
+        uint256 stakeAmount = 2**256 - 1;
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Prank addr1
+        vm.prank(addr1);
+
+        // Mock DAI transfer to return success (this should only be necessary for first stake call)
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transferFrom.selector),
+            abi.encode(true)
+        );
+
+        // Act once. Expect this to succeed
+        sportsBetting.stake(fixtureID, betType, stakeAmount);
+
+        // Prank addr2 now
+        vm.prank(addr2);
+
+        // Now when we stake again we expect a revert due to overflow
+        vm.expectRevert("Total stake overflow.");
+
+        // Act once. Expect this to succeed
+        sportsBetting.stake(fixtureID, betType, stakeAmount);
+    }
 
     // testShouldRevertIfTransferFailsOnStake
-    
-    // Test unstaking workflow
-    // testShouldSetAwaitingOnUnstake
-    // testShouldRequireOpenStateOnUnstake
-    // testShouldRequireNonZeroAmountOnStake
-    // testShouldRequireExistingStakeOnUnstake
-    // testShouldRevertOnUnstakeTooLow
-    // testShouldRevertOnStakeBelowEntranceFeeOnStake
-    // testShouldCorrectlyUpdateContractStateOnUnstake
-    // testShouldRevertIfTransferFailsOnUnstake
+    function testShouldRevertIfTransferFailsOnStake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt,
+        uint256 stakeAmount
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // Bound amounts to at least entrance fee
+        stakeAmount = bound(stakeAmount, sportsBetting.ENTRANCE_FEE(), 10e19);
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Prank addr1
+        vm.prank(addr1);
+
+        // Mock DAI transfer to return success (this should only be necessary for first stake call)
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transferFrom.selector),
+            abi.encode(false)
+        );
+
+        // Now when we stake again we expect a revert due to overflow
+        vm.expectRevert("Unable to transfer.");
+
+        // Act once. Expect this to succeed
+        sportsBetting.stake(fixtureID, betType, stakeAmount);
+    }
 
     // testShouldSetAwaitingOnUnstake
     function testShouldSetAwaitingOnUnstake(
@@ -861,4 +1099,563 @@ contract SportsBettingTestSuite is Test, HelperContract {
         uint256 actualState = uint256(sportsBetting.bettingState(fixtureID));
         assertEq(uint256(expectedState), actualState);
     }
+    
+    // testShouldRequireOpenStateOnUnstake
+    function testShouldRequireOpenStateOnUnstake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 unstakeAmount,
+        uint256 betTypeInt
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // REVERT CONDITION
+        // Set state to CLOSED
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.CLOSED);
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Expect revert for invalid bet type
+        vm.expectRevert("Bet activity is not open.");
+
+        // Act
+        sportsBetting.unstake(fixtureID, betType, unstakeAmount);
+    }
+
+    // testShouldRequireNonZeroAmountOnUnstake
+    function testShouldRequireNonZeroAmountOnUnstake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // REVERT CONDITION
+        // Bound amount to between zero and entrance fee
+        uint256 unstakeAmount = 0;
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Expect revert for zero unstake
+        vm.expectRevert("Amount should exceed zero.");
+
+        // Act
+        sportsBetting.unstake(fixtureID, betType, unstakeAmount);
+    }
+
+    // testShouldRequireExistingStakeOnUnstake
+    function testShouldRequireExistingStakeOnUnstake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt,
+        uint256 unstakeAmount
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+        // Assume unstake amount > 0
+        vm.assume(unstakeAmount > 0);
+
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Expect revert when no current stake exists
+        vm.expectRevert("No stake on this address-result.");
+
+        // Act
+        sportsBetting.unstake(fixtureID, betType, unstakeAmount);
+    }
+
+    // testShouldRevertOnStakeBelowEntranceFeeOnUnstake
+    function testShouldRevertOnStakeBelowEntranceFeeOnUnstake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt,
+        uint256 stakeAmount,
+        uint256 unstakeAmount
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+        // Assume unstake amount > 0
+        vm.assume(unstakeAmount > 0);
+
+        // Ensure unstakeAmount < Max(UINT256) - ENTRANCE_FEE so below bound doesn't cause overflow
+        vm.assume(unstakeAmount < 2**256 - 1 - sportsBetting.ENTRANCE_FEE());
+
+        // REVERT CONDITION
+        // We want unstakeAmount + 1 < stakeAmount < unstakeAmount + ENTRANCE_FEE
+        // This creates a partial unstake where stakeAmount becomes less than ENTRANCE_FEE
+        stakeAmount = bound(stakeAmount, unstakeAmount+1, unstakeAmount+sportsBetting.ENTRANCE_FEE()-1);
+
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Cheat set stake amount
+        sportsBetting.setUserStakeCheat(fixtureID, betType, addr1, stakeAmount);
+        sportsBetting.setTotalStakeCheat(fixtureID, betType, stakeAmount);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Mock addr1
+        vm.prank(addr1);
+
+        // Expect revert when going below entrance fee for partial unstake
+        vm.expectRevert("Cannot go below entrance fee.");
+
+        // Act
+        sportsBetting.unstake(fixtureID, betType, unstakeAmount);
+    }
+
+    // testShouldRevertOnUnstakeTooLow
+    function testShouldRevertOnUnstakeTooLow(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt,
+        uint256 stakeAmount,
+        uint256 unstakeAmount
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+        // Assume non-zero initial stake at least entrance fee
+        vm.assume(stakeAmount > sportsBetting.ENTRANCE_FEE());
+
+        // REVERT CONDITION
+        // Assume unstake amount > stake amount
+        // Expect revert when user tries to unstake more than they have staked
+        vm.assume(unstakeAmount > stakeAmount);
+
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Cheat set stake amount
+        sportsBetting.setUserStakeCheat(fixtureID, betType, addr1, stakeAmount);
+        sportsBetting.setTotalStakeCheat(fixtureID, betType, stakeAmount);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Mock addr1
+        vm.prank(addr1);
+
+        // Expect revert when trying to unstake more than current stake
+        vm.expectRevert("Current stake too low.");
+
+        // Act
+        sportsBetting.unstake(fixtureID, betType, unstakeAmount);
+    }
+
+    // testShouldSetActiveBettersFalseOnCompleteUnstake
+    function testShouldSetActiveBettersFalseOnCompleteUnstake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt,
+        uint256 stakeAmount
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+        // Assume non-zero initial stake at least entrance fee
+        vm.assume(stakeAmount > sportsBetting.ENTRANCE_FEE());
+
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Cheat set stake amount
+        sportsBetting.setUserStakeCheat(fixtureID, betType, addr1, stakeAmount);
+        sportsBetting.setTotalStakeCheat(fixtureID, betType, stakeAmount);
+
+        // Cheat set addr1 as active better
+        sportsBetting.setActiveBetterCheat(fixtureID, betType, addr1, true);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Mock addr1
+        vm.prank(addr1);
+
+        // Mock DAI transfer to return success
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(true)
+        );
+
+        // Act
+        sportsBetting.unstake(fixtureID, betType, stakeAmount);
+
+        // For complete unstake, expect user to no longer be an active better
+        assertEq(false, sportsBetting.activeBetters(fixtureID, betType, addr1));
+    }
+
+    // testShouldCorrectlyUpdateContractStateOnPartialUnstake
+    function testShouldCorrectlyUpdateContractStateOnPartialUnstake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt,
+        uint256 stakeAmount,
+        uint256 unstakeAmount
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+
+        // This is the total staked on this fixture-betType combo before the stake & unstake below
+        // So after ctx interaction, we expected the totalAmounts map for this fixuture-betType
+        // to equal previousTotalStake
+        uint256 previousTotalStake = 1e6;
+
+        // Bound stakeAmount to be greater than entrance fee but not overflow existing total stake
+        stakeAmount = bound(stakeAmount, sportsBetting.ENTRANCE_FEE(), 2**256 - 1 - previousTotalStake);
+
+        // Assume unstake amount greater than zero but does not take final stake below entrance fee
+        vm.assume(unstakeAmount > 0);
+        vm.assume(unstakeAmount < stakeAmount - sportsBetting.ENTRANCE_FEE());
+
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Cheat set stake amount
+        sportsBetting.setUserStakeCheat(fixtureID, betType, addr1, stakeAmount);
+        sportsBetting.setTotalStakeCheat(fixtureID, betType, stakeAmount+previousTotalStake);
+
+        // Cheat set addr1 as active better
+        sportsBetting.setActiveBetterCheat(fixtureID, betType, addr1, true);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Mock addr1
+        vm.prank(addr1);
+
+        // Mock DAI transfer to return success
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(true)
+        );
+
+        // Expect BetUnstaked emit
+        vm.expectEmit(true, true, true, true, address(sportsBetting));
+        // Emit the event we expect to see
+        emit BetUnstaked(addr1, fixtureID, unstakeAmount, betType);
+
+        // Act
+        sportsBetting.unstake(fixtureID, betType, unstakeAmount);
+
+        // For partial unstake, expect user to still be active better
+        assertEq(sportsBetting.activeBetters(fixtureID, betType, addr1), true);
+
+        // Assert stake maps updated correctly
+        uint256 expectedUserStake = stakeAmount - unstakeAmount;
+        assertEq(sportsBetting.amounts(fixtureID, betType, addr1), expectedUserStake);
+
+        uint256 expectedTotalStake = previousTotalStake + expectedUserStake;
+        assertEq(sportsBetting.totalAmounts(fixtureID, betType), expectedTotalStake);
+    }
+
+    // testShouldRevertIfTransferFailsOnUnstake
+    function testShouldRevertIfTransferFailsOnUnstake(
+        string memory fixtureID, 
+        uint256 ko, 
+        uint256 warpTime, 
+        uint256 betTypeInt,
+        uint256 stakeAmount,
+        uint256 unstakeAmount
+    ) public {
+        // For this test case, assume a valid fixtureID
+        vm.assume(bytes(fixtureID).length > 0);
+        // Assume reasonable fixture KO time
+        vm.assume(ko > 10e9);
+
+        // Assume stake amount > Entrance fee
+        vm.assume(stakeAmount > sportsBetting.ENTRANCE_FEE());
+
+        // Assume unstake amount greater than zero but does not take final stake below entrance fee
+        vm.assume(unstakeAmount > 0);
+        vm.assume(unstakeAmount < stakeAmount - sportsBetting.ENTRANCE_FEE());
+
+        // Bound warpTime to within valid range
+        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
+        // Bound Bet Type to valid enum value
+        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        
+        // Infer bet type from input
+        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
+
+        // Set state to OPEN
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
+
+        // Set kickoff time
+        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
+
+        // Cheat set stake amount
+        sportsBetting.setUserStakeCheat(fixtureID, betType, addr1, stakeAmount);
+        sportsBetting.setTotalStakeCheat(fixtureID, betType, stakeAmount);
+
+        // Warp block.timestamp
+        vm.warp(warpTime);
+
+        // Mock addr1
+        vm.prank(addr1);
+
+        // Mock DAI transfer to return success
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(false)
+        );
+
+        // Expect revert on transfer fail
+        vm.expectRevert("Unable to transfer DAI.");
+
+        // Act
+        sportsBetting.unstake(fixtureID, betType, unstakeAmount);
+    }
+
+    // fulfillFixtureResult
+    // shouldRevertOnInvalidRequestId
+    function testShouldRevertOnInvalidRequestId(
+        bytes32 requestId,
+        uint256 result
+    ) public {
+        // Don't set a requestResultToFixture entry
+        vm.expectRevert("Cannot find fixture ID");
+
+        sportsBetting.fulfillFixtureResultTest(requestId, result);
+    }
+
+    // shouldRevertOnInvalidResultResponse
+    function testShouldRevertOnInvalidResultResponse(
+        bytes32 requestId,
+        uint256 result,
+        string memory fixtureID
+    ) public {
+        // assume result is invalid (in this case any result > 4 (CANCELLED) is invalid)
+        vm.assume(result > 4);
+
+        // Set requestResultToFixture map
+        vm.assume(bytes(fixtureID).length > 0);
+        sportsBetting.setRequestResultToFixtureCheat(requestId, fixtureID);
+
+        // Don't set a requestResultToFixture entry
+        string memory errorString = string.concat(
+            "Error on fixture ",
+            fixtureID,
+            ": Unknown fixture result from API"
+        );
+        vm.expectRevert(bytes(errorString));
+
+        sportsBetting.fulfillFixtureResultTest(requestId, result);
+    }
+
+    // shouldNotSetFixtureStateIfNotAwaiting
+    function testshouldCorrectlySetFixtureStateOnCancelled(
+        bytes32 requestId,
+        string memory fixtureID, 
+        uint256 result
+    ) public {
+        // Bound result to either CANCELLED, HOME, DRAW, AWAY
+        result = bound(result, uint256(SportsBettingLib.FixtureResult.CANCELLED), uint256(SportsBettingLib.FixtureResult.AWAY));
+
+        // Set requestResultToFixture map
+        vm.assume(bytes(fixtureID).length > 0);
+        sportsBetting.setRequestResultToFixtureCheat(requestId, fixtureID);
+
+        // Act
+        sportsBetting.fulfillFixtureResultTest(requestId, result);
+
+        // Assert results map correctly set 
+        uint256 actualResult = uint256(sportsBetting.results(fixtureID));
+        assertEq(actualResult, result);
+
+        // Assert betting state is CLOSED as a state transition shouldn't occur
+        // if we are not in AWAITING
+        uint256 actualState = uint256(sportsBetting.bettingState(fixtureID));
+        assertEq(actualState, uint256(SportsBetting.BettingState.CLOSED));
+    }
+
+    // testShouldCorrectlySetFixtureStateOnCancelledIfAwaiting
+    function testShouldCorrectlySetFixtureStateOnCancelledIfAwaiting(
+        bytes32 requestId,
+        string memory fixtureID
+    ) public {
+        uint256 result = uint256(SportsBettingLib.FixtureResult.CANCELLED);
+
+        // Set requestResultToFixture map
+        vm.assume(bytes(fixtureID).length > 0);
+        sportsBetting.setRequestResultToFixtureCheat(requestId, fixtureID);
+
+        // Set fixture state to AWAITING so we can expect transition to CANCELLED
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.AWAITING);
+
+        // Act
+        sportsBetting.fulfillFixtureResultTest(requestId, result);
+
+        // Assert results map correctly set 
+        uint256 actualResult = uint256(sportsBetting.results(fixtureID));
+        assertEq(actualResult, result);
+
+        // Assert betting state is CLOSED as a state transition shouldn't occur
+        // if we are not in AWAITING
+        uint256 actualState = uint256(sportsBetting.bettingState(fixtureID));
+        assertEq(actualState, uint256(SportsBetting.BettingState.CANCELLED));
+    }
+
+    // testShouldCorrectlySetFixtureStateOnPayableIfAwaiting
+    function testShouldCorrectlySetFixtureStateOnPayableIfAwaiting(
+        bytes32 requestId,
+        string memory fixtureID, 
+        uint256 result
+    ) public {
+        // Bound result to either HOME, DRAW, AWAY so we expect AWAITING->PAYABLE transition
+        result = bound(result, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+
+        // Set requestResultToFixture map
+        vm.assume(bytes(fixtureID).length > 0);
+        sportsBetting.setRequestResultToFixtureCheat(requestId, fixtureID);
+
+        // Set fixture state to AWAITING so we can expect transition
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.AWAITING);
+
+        // Act
+        sportsBetting.fulfillFixtureResultTest(requestId, result);
+
+        // Assert results map correctly set 
+        uint256 actualResult = uint256(sportsBetting.results(fixtureID));
+        assertEq(actualResult, result);
+
+        // Assert betting state is CLOSED as a state transition shouldn't occur
+        // if we are not in AWAITING
+        uint256 actualState = uint256(sportsBetting.bettingState(fixtureID));
+        assertEq(actualState, uint256(SportsBetting.BettingState.PAYABLE));
+    }
+
+    // withdrawPayout
+    // shouldRevertWithdrawPayoutIfInvalidState
+    // shouldRevertWithdrawPayoutIfCallerAlreadyPaid
+
+    // handleWithdrawPayout
+    // shouldRevertHandlePayoutIfInvalidState
+    // shouldRevertHandlePayoutIfCallerNotEntitled (did not stake on winning outcome)
+    // shouldCorrectlyPayoutStakerOnWinningOutcome (staker bet on winning outcome only)
+    // shouldCorrectlyPayoutStakerOnMultipleOutcomes (staker bet on multiple outcomes)
+    // shouldRevertHandlePayoutOnTransferFail
+
+    // handleFixtureCancelledPayout
+    // shouldRevertCancelledPayoutIfInvalidState
+    // shouldRevertCancelledPayoutIfCallerNotEntitled (no stakes found on fixture)
+    // shouldCorrectlyPayoutStakerForCancelledFixture
+    // shouldCorrectlyPayoutStakerForCancelledFixtureOnMultipleOutcomes
+    // shouldRevertCancelledPayoutOnTransferFail
+
+    // handleCommissionPayout
+    // shouldRevertCommissionPayoutIfInvalidState
+    // shouldRevertCommissionPayoutIfAlreadyPaid
+    // shouldRevertCommissionPayoutIfInvalidResult
+    // shouldCorrectlyPayoutCommission
+    // shouldRevertCommissionPayoutOnTransferFail
 }

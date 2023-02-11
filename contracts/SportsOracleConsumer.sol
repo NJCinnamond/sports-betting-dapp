@@ -36,6 +36,11 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         string fixtureID,
         uint256 result
     );
+
+    event RequestFixtureResultError(
+        bytes32 indexed requestId,
+        string error
+    );
     
     constructor(
         string memory _sportsOracleURI,

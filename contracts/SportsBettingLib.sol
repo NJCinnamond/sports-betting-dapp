@@ -24,6 +24,8 @@ library SportsBettingLib {
             return FixtureResult.DRAW;
         } else if (result == uint256(FixtureResult.AWAY)) {
             return FixtureResult.AWAY;
+        } else if (result == uint256(FixtureResult.CANCELLED)) {
+            return FixtureResult.CANCELLED;
         }
         return FixtureResult.DEFAULT;
     }

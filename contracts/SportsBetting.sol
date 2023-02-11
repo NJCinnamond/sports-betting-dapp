@@ -4,6 +4,7 @@ pragma solidity ^0.8.12;
 //import "./mock/IERC20.sol";
 import "./SportsOracleConsumer.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./SportsBettingLib.sol";
 
 contract SportsBetting is SportsOracleConsumer {
@@ -39,8 +40,6 @@ contract SportsBetting is SportsOracleConsumer {
         SportsBettingLib.FixtureResult betType
     );
 
-    event BetPayoutFulfillmentError(string fixtureID, string reason);
-
     event BetPayout(address indexed better, string fixtureID, uint256 amount);
 
     event BetCommissionPayout(string indexed fixtureID, uint256 amount);
@@ -56,7 +55,7 @@ contract SportsBetting is SportsOracleConsumer {
     address public immutable daiAddress;
 
     // Entrance fee of 0.0001 DAI (10^14 Wei)
-    uint256 public constant ENTRANCE_FEE = 10**14;
+    uint256 public constant ENTRANCE_FEE = 10e14;
 
     // Commission rate percentage taken by contract owner for each payout as a percentage
     uint256 public constant COMMISSION_RATE = 1;
@@ -260,9 +259,23 @@ contract SportsBetting is SportsOracleConsumer {
         require(bettingState[fixtureID] == BettingState.OPEN, "Bet activity is not open.");
         require(amount >= ENTRANCE_FEE, "Amount is below entrance fee.");
 
+        bool flag;
+        uint256 newStakerAmount;
+        uint256 newTotalAmount;
+
+        // Handle possible overflow on staker amount
+        (flag, newStakerAmount) = SafeMath.tryAdd(amounts[fixtureID][betType][msg.sender], amount);
+        require(flag, "User stake overflow.");
+
+        // Handle possible overflow on total amounts
+        (flag, newTotalAmount) = SafeMath.tryAdd(totalAmounts[fixtureID][betType], amount);
+        require(flag, "Total stake overflow.");
+
         // Update state
-        amounts[fixtureID][betType][msg.sender] += amount;
-        totalAmounts[fixtureID][betType] += amount;
+        amounts[fixtureID][betType][msg.sender] = newStakerAmount;
+        totalAmounts[fixtureID][betType] = newTotalAmount;
+
+        // Ensure user is active staker
         addHistoricalBetter(fixtureID, betType, msg.sender);
         activeBetters[fixtureID][betType][msg.sender] = true;
 
@@ -271,7 +284,7 @@ contract SportsBetting is SportsOracleConsumer {
         IERC20 dai = IERC20(daiAddress);
         require(
             dai.transferFrom(msg.sender, address(this), amount),
-            "Unable to transfer"
+            "Unable to transfer."
         );
     }
 
@@ -287,31 +300,36 @@ contract SportsBetting is SportsOracleConsumer {
             return;
         }
 
-        // Impose requirements on unstake value
+        // Betting must be in OPEN state for this fixture
         require(bettingState[fixtureID] == BettingState.OPEN, "Bet activity is not open.");
+
+        // Impose requirements on unstake value
         require(amount > 0, "Amount should exceed zero.");
 
         // Impose requirements on user's stake if this unstake occurs
         uint256 amountStaked = amounts[fixtureID][betType][msg.sender];
         require(amountStaked > 0, "No stake on this address-result.");
         require(amount <= amountStaked, "Current stake too low.");
-        // If this is a non-partial unstake, ensure ENTRANCE_FEE is maintained
-        if (amountStaked > amount) {
-            require(amountStaked - amount >= ENTRANCE_FEE, "Cannot go below entrance fee.");
+
+        // New value for user stake on this fixture-betType combo
+        uint256 newStakerAmount = amountStaked - amount;
+
+        // If this is a partial unstake, ensure ENTRANCE_FEE is maintained
+        if (newStakerAmount > 0) {
+            require(newStakerAmount >= ENTRANCE_FEE, "Cannot go below entrance fee.");
+        } else {
+            // Else if total unstake, user is no longer an active better
+            activeBetters[fixtureID][betType][msg.sender] = false;
         }
 
         // Update state
-        amounts[fixtureID][betType][msg.sender] -= amount;
+        amounts[fixtureID][betType][msg.sender] = newStakerAmount;
         totalAmounts[fixtureID][betType] -= amount;
-        // If non-partial unstake, caller is no longer an active staker
-        if (amounts[fixtureID][betType][msg.sender] <= 0) {
-            activeBetters[fixtureID][betType][msg.sender] = false;
-        }
 
         // Transfer DAI to msg sender
         emit BetUnstaked(msg.sender, fixtureID, amount, betType);
         IERC20 dai = IERC20(daiAddress);
-        require(dai.transfer(msg.sender, amount), "Unable to unstake");
+        require(dai.transfer(msg.sender, amount), "Unable to transfer DAI.");
     }
 
     function requestFixtureKickoffTime(string memory fixtureID) public {
@@ -356,6 +374,11 @@ contract SportsBetting is SportsOracleConsumer {
         override
     {
         string memory fixtureID = requestResultToFixture[requestId];
+        // Can't proceed with empty fixture ID
+        if (bytes(fixtureID).length == 0) {
+            revert("Cannot find fixture ID");
+        }
+
         emit RequestFixtureResultFulfilled(requestId, fixtureID, result);
 
         SportsBettingLib.FixtureResult parsedResult = SportsBettingLib.getFixtureResultFromAPIResponse(result);
@@ -365,7 +388,6 @@ contract SportsBetting is SportsOracleConsumer {
                 fixtureID,
                 ": Unknown fixture result from API"
             );
-            emit BetPayoutFulfillmentError(fixtureID, errorString);
             revert(errorString);
         }
 
