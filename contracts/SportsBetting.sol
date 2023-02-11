@@ -436,18 +436,19 @@ contract SportsBetting is SportsOracleConsumer {
         SportsBettingLib.FixtureResult[] memory winningOutcomes = new SportsBettingLib.FixtureResult[](1);
         winningOutcomes[0] = result;
         SportsBettingLib.FixtureResult[] memory losingOutcomes = SportsBettingLib.getLosingFixtureOutcomes(result);
-
         // Get total amounts bet on each fixture result
         uint256 winningAmount = getTotalAmountBetOnFixtureOutcomes(fixtureID, winningOutcomes);
         uint256 losingAmount = getTotalAmountBetOnFixtureOutcomes(fixtureID, losingOutcomes);
-        uint256 totalAmount = winningAmount + losingAmount;
+        (bool flag, uint256 totalAmount) = SafeMath.tryAdd(winningAmount, losingAmount);
+        if (!flag) {
+            revert("Overflow on total amount bet");
+        }
 
         // Calculate staker's share of winnings
-        uint256 obligation = (stakerAmount * totalAmount) / winningAmount;
-
+        uint256 obligation = calculateStakerObligation(stakerAmount, winningAmount, totalAmount);
         // Deduct owner commission
         // Commission of COMMISSION_RATE % is taken from staker profits
-        uint256 commission = (COMMISSION_RATE * (obligation-stakerAmount)) / 100;
+        uint256 commission = calculateCommission(obligation, stakerAmount);
         obligation -= commission;
 
         // Set bet payout states
@@ -461,6 +462,45 @@ contract SportsBetting is SportsOracleConsumer {
             dai.transfer(msg.sender, obligation),
             "Unable to payout staker"
         );
+    }
+
+    function calculateStakerObligation(
+        uint256 stakerAmount,
+        uint256 winningAmount,
+        uint256 totalAmount
+    ) public pure returns(uint256) {
+        bool flag;
+        uint256 stakerShare;
+        uint256 obligation;
+        (flag, stakerShare) = SafeMath.tryMul(totalAmount, stakerAmount);
+        if (!flag) {
+            revert("Overflow calculating obligation");
+        }
+        (flag, obligation) = SafeMath.tryDiv(stakerShare, winningAmount);
+        if (!flag) {
+            revert("Division by zero");
+        }
+        
+        return obligation;
+    }
+
+    function calculateCommission(
+        uint256 stakerObligation,
+        uint256 stakerAmount
+    ) public pure returns(uint256) {
+        bool flag;
+        uint256 profit;
+        uint256 commission;
+        (flag, profit) = SafeMath.trySub(stakerObligation, stakerAmount);
+        if (!flag) {
+            revert("Underflow calculating profit");
+        }
+        (flag, commission) = SafeMath.tryMul(COMMISSION_RATE, profit);
+        if (!flag) {
+            revert("Overflow calculating commission");
+        }
+        // Divide by 100 as COMMISSION_RATE is in percentage terms
+        return commission / 100;
     }
 
     function handleFixtureCancelledPayout(string memory fixtureID)

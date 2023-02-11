@@ -48,6 +48,10 @@ abstract contract HelperContract {
         SportsBettingLib.FixtureResult betType
     );
 
+    event BetPayout(address indexed better, string fixtureID, uint256 amount);
+
+    event BetCommissionPayout(string indexed fixtureID, uint256 amount);
+
     string constant mockURI = "mockURI";
     uint256 linkFee = 1e17; // 1e17 = 0.1 LINK
     address constant chainlinkDevRel = 0x74EcC8Bdeb76F2C6760eD2dc8A46ca5e581fA656;
@@ -1636,14 +1640,319 @@ contract SportsBettingTestSuite is Test, HelperContract {
 
     // withdrawPayout
     // shouldRevertWithdrawPayoutIfInvalidState
+    function testShouldRevertWithdrawPayoutIfInvalidState(
+        string memory fixtureID,
+        uint256 state
+    ) public {
+        // Bound fixture state to invalid state - CLOSED, OPENING, OPEN, or AWAITING
+        state = bound(state, uint256(SportsBetting.BettingState.CLOSED), uint256(SportsBetting.BettingState.AWAITING));
+    
+        // Set betting state on fixture
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState(state));
+        
+        // Expect revert
+        vm.expectRevert("State not PAYABLE or CANCELLED.");
+
+        // Act
+        sportsBetting.withdrawPayout(fixtureID);
+    }
+
     // shouldRevertWithdrawPayoutIfCallerAlreadyPaid
+    function testShouldRevertWithdrawPayoutIfCallerAlreadyPaid(
+        string memory fixtureID,
+        uint256 state
+    ) public {
+        // Bound fixture state to valid state - PAYABLE or CANCELLED
+        state = bound(state, uint256(SportsBetting.BettingState.PAYABLE), uint256(SportsBetting.BettingState.CANCELLED));
+    
+        // Set betting state on fixture
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState(state));
+
+        // Set user was paid for addr1
+        sportsBetting.setUserWasPaidCheat(fixtureID, addr1, true);
+
+        // Expect revert
+        vm.expectRevert("Already paid.");
+
+        // Act
+        vm.prank(addr1);
+        sportsBetting.withdrawPayout(fixtureID);
+    }
 
     // handleWithdrawPayout
     // shouldRevertHandlePayoutIfInvalidState
-    // shouldRevertHandlePayoutIfCallerNotEntitled (did not stake on winning outcome)
+    function testShouldRevertHandlePayoutIfInvalidState(
+        string memory fixtureID,
+        uint256 result
+    ) public {
+        // Bound fixture to invalid, either DEFAULT or CANCELLED
+        vm.assume(result == uint256(SportsBettingLib.FixtureResult.DEFAULT) || result == uint256(SportsBettingLib.FixtureResult.CANCELLED));
+        sportsBetting.setFixtureResultCheat(fixtureID, SportsBettingLib.FixtureResult(result));
+
+        // Expect revert
+        vm.expectRevert("Invalid fixture result.");
+
+        // Act
+        sportsBetting.handleWithdrawPayoutTest(fixtureID);
+    }
+
+    // testShouldRevertHandlePayoutIfCallerHasNoStakeOnAnyOutcome (did not stake on winning outcome)
+    function testShouldRevertHandlePayoutIfCallerHasNoStakeOnAnyOutcome(
+        string memory fixtureID,
+        uint256 result
+    ) public {
+        // Bound fixture to valid, either HOME, DRAW, or AWAY
+        result = bound(result, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        sportsBetting.setFixtureResultCheat(fixtureID, SportsBettingLib.FixtureResult(result));
+
+        // Expect revert as addr1 has not staked on any outcome
+        vm.expectRevert("You did not stake on the winning outcome");
+
+        // Act
+        vm.prank(addr1);
+        sportsBetting.handleWithdrawPayoutTest(fixtureID);
+    }
+
+    // testShouldRevertHandlePayoutIfCallerHasNoStakeOnWinningOutcome
+    function testShouldRevertHandlePayoutIfCallerHasNoStakeOnWinningOutcome(
+        string memory fixtureID,
+        uint256 stakeAmount
+    ) public {
+        // Bound stakes
+        stakeAmount = bound(stakeAmount, 1, 10e30);
+
+        // Bound fixture result to HOME
+        SportsBettingLib.FixtureResult result = SportsBettingLib.FixtureResult.HOME;
+        sportsBetting.setFixtureResultCheat(fixtureID, result);
+
+        // Now set addr1 as a staker on AWAY, i.e. not the winning outcome
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult.AWAY, addr1, stakeAmount);
+
+        // Expect revert as addr1 has not staked on any outcome
+        vm.expectRevert("You did not stake on the winning outcome");
+
+        // Act
+        vm.prank(addr1);
+        sportsBetting.handleWithdrawPayoutTest(fixtureID);
+    }
+
     // shouldCorrectlyPayoutStakerOnWinningOutcome (staker bet on winning outcome only)
+    function testShouldCorrectlyPayoutStakerOnWinningOutcome(
+        string memory fixtureID,
+        uint256 result,
+        uint256 stakeAmount
+    ) public {
+        // Bound stakes
+        stakeAmount = bound(stakeAmount, 1, 10e30);
+
+        // Bound fixture result to HOME, DRAW, or AWAY
+        result = bound(result, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        sportsBetting.setFixtureResultCheat(fixtureID, SportsBettingLib.FixtureResult(result));
+
+        // Now set addr1 as a staker on result
+        // Important to set total amount too
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult(result), addr1, stakeAmount);
+        sportsBetting.setTotalStakeCheat(fixtureID, SportsBettingLib.FixtureResult(result), stakeAmount);
+
+        // Expect BetPayout emit
+        vm.expectEmit(true, true, true, true, address(sportsBetting));
+        // Emit the event we expect to see
+        emit BetPayout(addr1, fixtureID, stakeAmount);
+
+        // Mock DAI transfer to return success
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(true)
+        );
+
+        // Act
+        vm.prank(addr1);
+        sportsBetting.handleWithdrawPayoutTest(fixtureID);
+
+        // Assert userWasPaid is true
+        assertEq(true, sportsBetting.userWasPaid(fixtureID, addr1));
+        // Assert payouts map set
+        assertEq(stakeAmount, sportsBetting.payouts(fixtureID, addr1));
+    }
+
     // shouldCorrectlyPayoutStakerOnMultipleOutcomes (staker bet on multiple outcomes)
-    // shouldRevertHandlePayoutOnTransferFail
+    function testShouldCorrectlyPayoutStakerOnMultipleOutcomes(
+        string memory fixtureID,
+        uint256 addr1StakeOnWinningOutcome,
+        uint256 addr1StakeOnLosingOutcome
+    ) public {
+        // Bound stakes
+        addr1StakeOnWinningOutcome = bound(addr1StakeOnWinningOutcome, 1, 10e30);
+        addr1StakeOnLosingOutcome = bound(addr1StakeOnLosingOutcome, 1, 10e30);
+
+        // Set fixture result to HOME
+        SportsBettingLib.FixtureResult result = SportsBettingLib.FixtureResult.HOME;
+        sportsBetting.setFixtureResultCheat(fixtureID, result);
+
+        // Now set addr1 as a staker on both result and losing outcome
+        sportsBetting.setUserStakeCheat(fixtureID, result, addr1, addr1StakeOnWinningOutcome);
+        sportsBetting.setTotalStakeCheat(fixtureID, result, addr1StakeOnWinningOutcome);
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult.AWAY, addr1, addr1StakeOnLosingOutcome);
+        sportsBetting.setTotalStakeCheat(fixtureID, SportsBettingLib.FixtureResult.AWAY, addr1StakeOnLosingOutcome);
+
+        // Calculate expected obligation (amount paid to addr1)
+        // This is equal to total amount (as better was only better on winning outcome) MINUS commission
+        uint256 expectedObligation = addr1StakeOnWinningOutcome + addr1StakeOnLosingOutcome;
+        uint256 expectedCommission = (sportsBetting.COMMISSION_RATE() * (expectedObligation-addr1StakeOnWinningOutcome)) / 100;
+        expectedObligation -= expectedCommission;
+
+        // Expect BetPayout emit
+        vm.expectEmit(true, true, true, true, address(sportsBetting));
+        // Emit the event we expect to see
+        emit BetPayout(addr1, fixtureID, expectedObligation);
+
+        // Mock DAI transfer to return success
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(true)
+        );
+
+        // Act
+        vm.prank(addr1);
+        sportsBetting.handleWithdrawPayoutTest(fixtureID);
+
+        // Assert userWasPaid is true
+        assertEq(sportsBetting.userWasPaid(fixtureID, addr1), true);
+        // Assert payouts map set
+        assertEq(sportsBetting.payouts(fixtureID, addr1), expectedObligation);
+    }
+
+    // testShouldCorrectlyPayoutMultipleStakersOnMultipleOutcomes
+    function testShouldCorrectlyPayoutMultipleStakersOnMultipleOutcomes(
+        string memory fixtureID,
+        uint256 addr1StakeOnWinningOutcome,
+        uint256 addr1StakeOnLosingOutcome,
+        uint256 addr2StakeOnWinningOutcome,
+        uint256 addr2StakeOnLosingOutcome
+    ) public {
+        // Bound stakes
+        addr1StakeOnWinningOutcome = bound(addr1StakeOnWinningOutcome, 1, 10e30);
+        addr1StakeOnLosingOutcome = bound(addr1StakeOnLosingOutcome, 1, 10e30);
+        addr2StakeOnWinningOutcome = bound(addr2StakeOnWinningOutcome, 1, 10e30);
+        addr2StakeOnLosingOutcome = bound(addr2StakeOnLosingOutcome, 1, 10e30);
+
+        // Set fixture result to HOME
+        SportsBettingLib.FixtureResult result = SportsBettingLib.FixtureResult.HOME;
+        sportsBetting.setFixtureResultCheat(fixtureID, result);
+
+        /////////////////////////////////////////////////////////////
+        // ADDR1 STAKES
+        /////////////////////////////////////////////////////////////
+        // Now set addr1 as a staker on both result and losing outcome
+        sportsBetting.setUserStakeCheat(fixtureID, result, addr1, addr1StakeOnWinningOutcome);
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult.AWAY, addr1, addr1StakeOnLosingOutcome);
+        sportsBetting.setTotalStakeCheat(fixtureID, SportsBettingLib.FixtureResult.AWAY, addr1StakeOnLosingOutcome);
+
+        /////////////////////////////////////////////////////////////
+        // ADDR2 STAKES
+        /////////////////////////////////////////////////////////////
+        // Now set addr2 as a staker on both result and losing outcome
+        sportsBetting.setUserStakeCheat(fixtureID, result, addr2, addr2StakeOnWinningOutcome);
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult.DRAW, addr2, addr2StakeOnWinningOutcome);
+        sportsBetting.setTotalStakeCheat(fixtureID, SportsBettingLib.FixtureResult.DRAW, addr2StakeOnLosingOutcome);
+
+        // TOTALS
+        uint256 totalAmountStakedOnResult = addr1StakeOnWinningOutcome + addr2StakeOnWinningOutcome;
+        sportsBetting.setTotalStakeCheat(fixtureID, result, totalAmountStakedOnResult);
+        uint256 totalAmountStaked = totalAmountStakedOnResult + addr1StakeOnLosingOutcome + addr2StakeOnLosingOutcome;
+
+        // OBLGIATIONS AND COMMISSION
+        // Calculate expected obligation (amount paid out)
+        uint256 addr1ExpectedObligation = (addr1StakeOnWinningOutcome * totalAmountStaked) / totalAmountStakedOnResult;
+        uint256 addr1ExpectedCommission = (sportsBetting.COMMISSION_RATE() * (addr1ExpectedObligation-addr1StakeOnWinningOutcome)) / 100;
+        addr1ExpectedObligation -= addr1ExpectedCommission;
+
+        uint256 addr2ExpectedObligation = (addr2StakeOnWinningOutcome * totalAmountStaked) / totalAmountStakedOnResult;
+        uint256 addr2ExpectedCommission = (sportsBetting.COMMISSION_RATE() * (addr2ExpectedObligation-addr2StakeOnWinningOutcome)) / 100;
+        addr2ExpectedObligation -= addr2ExpectedCommission;
+
+        /////////////////////////////////////////////////////////////////
+        // ADDR1 CLAIMS PAYOUT
+        /////////////////////////////////////////////////////////////////
+        // Expect BetPayout emit
+        vm.expectEmit(true, true, true, true, address(sportsBetting));
+        // Emit the event we expect to see
+        emit BetPayout(addr1, fixtureID, addr1ExpectedObligation);
+
+        // Mock DAI transfer to return success
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(true)
+        );
+
+        // Act
+        vm.prank(addr1);
+        sportsBetting.handleWithdrawPayoutTest(fixtureID);
+
+        // Assert userWasPaid is true
+        assertEq(sportsBetting.userWasPaid(fixtureID, addr1), true);
+        // Assert payouts map set
+        assertEq(sportsBetting.payouts(fixtureID, addr1), addr1ExpectedObligation);
+
+        /////////////////////////////////////////////////////////////////
+        // ADDR2 CLAIMS PAYOUT
+        /////////////////////////////////////////////////////////////////
+        // Expect BetPayout emit
+        vm.expectEmit(true, true, true, true, address(sportsBetting));
+        // Emit the event we expect to see
+        emit BetPayout(addr2, fixtureID, addr2ExpectedObligation);
+
+        // Mock DAI transfer to return success
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(true)
+        );
+
+        // Act
+        vm.prank(addr2);
+        sportsBetting.handleWithdrawPayoutTest(fixtureID);
+
+        // Assert userWasPaid is true
+        assertEq(sportsBetting.userWasPaid(fixtureID, addr2), true);
+        // Assert payouts map set
+        assertEq(sportsBetting.payouts(fixtureID, addr2), addr2ExpectedObligation);
+    }
+
+    // testShouldRevertHandlePayoutOnTransferFail
+    function testShouldRevertHandlePayoutOnTransferFail(
+        string memory fixtureID,
+        uint256 result
+    ) public {
+        // Bound stake amount to a positive number
+        uint256 stakeAmount = 10e9;
+
+        // Bound fixture result to HOME, DRAW, or AWAY
+        result = bound(result, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+        sportsBetting.setFixtureResultCheat(fixtureID, SportsBettingLib.FixtureResult(result));
+
+        // Now set addr1 as a staker on result
+        // Important to set total amount too
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult(result), addr1, stakeAmount);
+        sportsBetting.setTotalStakeCheat(fixtureID, SportsBettingLib.FixtureResult(result), stakeAmount);
+
+        // Mock DAI transfer to return fail
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(false)
+        );
+
+        // Expect revert for transfer fail
+        vm.expectRevert("Unable to payout staker");
+
+        // Act
+        vm.prank(addr1);
+        sportsBetting.handleWithdrawPayoutTest(fixtureID);
+    }
 
     // handleFixtureCancelledPayout
     // shouldRevertCancelledPayoutIfInvalidState

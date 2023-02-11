@@ -27,6 +27,27 @@ contract SportsBettingTest is SportsBetting {
         linkFee = _fee;
     }
 
+    function handleWithdrawPayoutTest(
+        string memory fixtureID
+    ) public {
+        handleWithdrawPayout(fixtureID);
+    }
+
+    function setFixtureResultCheat(
+        string memory fixtureID,
+        SportsBettingLib.FixtureResult result
+    ) public {
+        results[fixtureID] = result;
+    }
+
+    function setUserWasPaidCheat(
+        string memory fixtureID,
+        address user,
+        bool wasPaid
+    ) public {
+        userWasPaid[fixtureID][user] = wasPaid;
+    }
+
     function setActiveBetterCheat(
         string memory fixtureID, 
         SportsBettingLib.FixtureResult betType,
