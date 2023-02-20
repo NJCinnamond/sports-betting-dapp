@@ -104,23 +104,6 @@ contract SportsBetting is SportsOracleConsumer {
     // Map of fixture ID to whether commission was paid to owner for this fixture
     mapping(string => bool) public commissionPaid;
 
-    // Map each fixture ID to a map of FixtureResult to an array of all addresses that have ever placed
-    // bets for that fixture-result pair
-    mapping(string => mapping(SportsBettingLib.FixtureResult => address[])) public historicalBetters;
-
-    // We want to store unique addresses in historicalBetters mapping.
-    // Solidity has no native set type, so we keep a mapping of address to fixture type to bet type
-    // to index in historicalBetters
-    // We only append an address to historicalBetters if it does not have an existing index
-    mapping(string => mapping(SportsBettingLib.FixtureResult => mapping(address => uint256)))
-        public historicalBettersIndex;
-
-    // activeBetters represents all addresses who currently have an amount staked on a fixture-result
-    // The mapping(address => bool) pattern allows us to set address to true or false if an address
-    // stakes/unstakes for that bet, and allows safer 'contains' methods on the betters
-    mapping(string => mapping(SportsBettingLib.FixtureResult => mapping(address => bool)))
-        public activeBetters;
-
     constructor(
         string memory _sportsOracleURI,
         address _oracle,
@@ -145,11 +128,6 @@ contract SportsBetting is SportsOracleConsumer {
     {
         bettingState[fixtureID] = state;
         emit BettingStateChanged(fixtureID, state);
-
-        // If we open a fixture, intialize ctx state vars
-        if (state == BettingState.OPEN) {
-            initializeHistoricalBetters(fixtureID);
-        }
     }
 
     // closeBetForFixture closes fixture if it is
@@ -244,7 +222,7 @@ contract SportsBetting is SportsOracleConsumer {
         );
     }
 
-    function stake(string memory fixtureID, SportsBettingLib.FixtureResult betType, uint256 amount) public {
+    function stake(string memory fixtureID, SportsBettingLib.FixtureResult betType, uint256 amount) public virtual {
         // Don't allow stakes if we should be in AWAITING state
         if (fixtureShouldBecomeAwaiting(fixtureID)) {
             setFixtureBettingState(fixtureID, BettingState.AWAITING);
@@ -274,10 +252,6 @@ contract SportsBetting is SportsOracleConsumer {
         // Update state
         amounts[fixtureID][betType][msg.sender] = newStakerAmount;
         totalAmounts[fixtureID][betType] = newTotalAmount;
-
-        // Ensure user is active staker
-        addHistoricalBetter(fixtureID, betType, msg.sender);
-        activeBetters[fixtureID][betType][msg.sender] = true;
 
         // Transfer DAI tokens
         emit BetStaked(msg.sender, fixtureID, amount, betType);
@@ -317,9 +291,6 @@ contract SportsBetting is SportsOracleConsumer {
         // If this is a partial unstake, ensure ENTRANCE_FEE is maintained
         if (newStakerAmount > 0) {
             require(newStakerAmount >= ENTRANCE_FEE, "Cannot go below entrance fee.");
-        } else {
-            // Else if total unstake, user is no longer an active better
-            activeBetters[fixtureID][betType][msg.sender] = false;
         }
 
         // Update state
@@ -532,49 +503,6 @@ contract SportsBetting is SportsOracleConsumer {
             amount += totalAmounts[fixtureID][outcomes[i]];
         }
         return amount;
-    }
-
-    function initializeHistoricalBetters(string memory fixtureID) internal {
-        for (uint256 i = 0; i < betTypes.length; i++) {
-            initializeHistoricalBettersForBetType(fixtureID, betTypes[i]);
-        }
-    }
-
-    function initializeHistoricalBettersForBetType(
-        string memory fixtureID,
-        SportsBettingLib.FixtureResult betType
-    ) internal {
-        // This code initializes our map for historical betters in fixture
-        // It ensures we can reliably track only unique betters for fixture
-        historicalBetters[fixtureID][betType] = [address(0x0)];
-    }
-
-    function isHistoricalBetter(
-        string memory fixtureID,
-        SportsBettingLib.FixtureResult betType,
-        address staker
-    ) internal view returns (bool) {
-        // address 0x0 is not valid if pos is 0 is not in the array
-        if (
-            staker != address(0x0) &&
-            historicalBettersIndex[fixtureID][betType][staker] > 0
-        ) {
-            return true;
-        }
-        return false;
-    }
-
-    function addHistoricalBetter(
-        string memory fixtureID,
-        SportsBettingLib.FixtureResult betType,
-        address staker
-    ) internal {
-        if (!isHistoricalBetter(fixtureID, betType, staker)) {
-            historicalBettersIndex[fixtureID][betType][
-                staker
-            ] = historicalBetters[fixtureID][betType].length;
-            historicalBetters[fixtureID][betType].push(staker);
-        }
     }
 
     function getEnrichedFixtureData(string memory fixtureID, address user)

@@ -27,6 +27,25 @@ contract SportsBettingTest is SportsBetting {
         linkFee = _fee;
     }
 
+    function setCommissionPaidCheat(
+        string memory fixtureID,
+        bool wasPaid
+    ) public {
+        commissionPaid[fixtureID] = wasPaid;
+    }
+
+    function handleCommissionPayoutTest(
+        string memory fixtureID
+    ) public {
+        handleCommissionPayout(fixtureID);
+    }
+
+    function handleFixtureCancelledPayoutTest(
+        string memory fixtureID
+    ) public {
+        handleFixtureCancelledPayout(fixtureID);
+    }
+
     function handleWithdrawPayoutTest(
         string memory fixtureID
     ) public {
@@ -46,15 +65,6 @@ contract SportsBettingTest is SportsBetting {
         bool wasPaid
     ) public {
         userWasPaid[fixtureID][user] = wasPaid;
-    }
-
-    function setActiveBetterCheat(
-        string memory fixtureID, 
-        SportsBettingLib.FixtureResult betType,
-        address staker,
-        bool isActive
-    ) public {
-        activeBetters[fixtureID][betType][staker] = isActive;
     }
 
     function setUserStakeCheat(
@@ -98,25 +108,6 @@ contract SportsBettingTest is SportsBetting {
         uint256 ko
     ) public {
         fixtureToKickoffTime[fixtureID] = ko;
-    }
-
-    function initializeHistoricalBettersTest(string memory fixtureID) public {
-        initializeHistoricalBetters(fixtureID);
-    }
-
-    function getHistoricalBettersLength(
-        string memory fixtureID,
-        SportsBettingLib.FixtureResult betType
-    ) public view returns (uint256) {
-        return historicalBetters[fixtureID][betType].length;
-    }
-
-    function setHistoricalBetters(
-        string memory fixtureID,
-        SportsBettingLib.FixtureResult betType,
-        address[] memory addresses
-    ) public {
-        historicalBetters[fixtureID][betType] = addresses;
     }
 
     function getStakeSummaryForUserTest(string memory fixtureID, address user)

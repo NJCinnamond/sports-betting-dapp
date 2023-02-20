@@ -3,65 +3,7 @@ pragma solidity ^0.8.12;
 
 import "forge-std/Test.sol";
 import "contracts/test/SportsBettingTest.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-
-contract MockDAI is ERC20 {
-    constructor() ERC20("Name", "DAI") {
-        this;
-    }
-}
-
-contract MockLINK is ERC20 {
-    constructor() ERC20("Name", "LINK") {
-        this;
-    }
-
-    // Mock LINK token transferAndCall method
-    function transferAndCall(address, uint, bytes memory)
-        public pure
-        returns (bool success)
-    {
-        return true;
-    }
-}
-
-abstract contract HelperContract {
-    event BettingStateChanged(string fixtureID, SportsBetting.BettingState state);
-
-    event RequestFixtureKickoffFulfilled(
-        bytes32 indexed requestId,
-        string fixtureID,
-        uint256 kickoff
-    );
-
-    event BetStaked(
-        address indexed better,
-        string fixtureID,
-        uint256 amount,
-        SportsBettingLib.FixtureResult betType
-    );
-
-    event BetUnstaked(
-        address indexed better,
-        string fixtureID,
-        uint256 amount,
-        SportsBettingLib.FixtureResult betType
-    );
-
-    event BetPayout(address indexed better, string fixtureID, uint256 amount);
-
-    event BetCommissionPayout(string indexed fixtureID, uint256 amount);
-
-    string constant mockURI = "mockURI";
-    uint256 linkFee = 1e17; // 1e17 = 0.1 LINK
-    address constant chainlinkDevRel = 0x74EcC8Bdeb76F2C6760eD2dc8A46ca5e581fA656;
-    SportsBettingTest sportsBetting; 
-    MockDAI mockDAI;
-    MockLINK mockLINK;
-
-    address constant addr1 = 0xe58b52D74FA00f94d61C6Dcb73D79a8ea704a36B;
-    address constant addr2 = 0x07401dc21CcA4aF0f4a50f7DFCCE4c795f671cD7;
-}
+import { MockDAI, MockLINK, HelperContract } from "test/foundry/helpers.sol";
 
 contract SportsBettingTestSuite is Test, HelperContract {
     function setUp() public {
@@ -75,55 +17,6 @@ contract SportsBettingTestSuite is Test, HelperContract {
             "7599d3c8f31e4ce78ad2b790cbcfc673",
             linkFee
         );
-    }
-
-    // testSetFixtureBettingStateClosed asserts that, when a fixture is called with Closed,
-    // 1. BettingState[fixtureID] becomes CLOSED
-    // 2. The historical betters arrays for each fixture ID remain empty
-    function testSetFixtureBettingStateClosed(string memory fixtureID) public {
-        SportsBetting.BettingState state = SportsBetting.BettingState.CLOSED;
-
-        // Expect BettingStateChanged emit
-        vm.expectEmit(true, true, false, true, address(sportsBetting));
-
-        // Emit the event we expect to see
-        emit BettingStateChanged(fixtureID, state);
-
-        sportsBetting.setFixtureBettingStateTest(fixtureID, SportsBetting.BettingState(state));
-
-        uint8 actualState = uint8(sportsBetting.bettingState(fixtureID));
-        assertEq(uint8(state), actualState);
-
-        // We expect the historical betters arrays to not be initialized as betting state is closed
-        assertEq(sportsBetting.getHistoricalBettersLength(fixtureID,SportsBettingLib.FixtureResult.HOME), 0);
-        assertEq(sportsBetting.getHistoricalBettersLength(fixtureID,SportsBettingLib.FixtureResult.DRAW), 0);
-        assertEq(sportsBetting.getHistoricalBettersLength(fixtureID,SportsBettingLib.FixtureResult.AWAY), 0);
-    }
-
-    // testSetFixtureBettingStateOpen asserts that, when a fixture is called with Open,
-    // 1. BettingState[fixtureID] becomes OPEN
-    // 2. The historical betters arrays for each fixture ID is initialized to [zero address]
-    function testSetFixtureBettingStateOpen(string memory fixtureID) public {
-        SportsBetting.BettingState state = SportsBetting.BettingState.OPEN;
-
-        // Expect BettingStateChanged emit
-        vm.expectEmit(true, true, false, true, address(sportsBetting));
-
-        // Emit the event we expect to see
-        emit BettingStateChanged(fixtureID, state);
-
-        sportsBetting.setFixtureBettingStateTest(fixtureID, SportsBetting.BettingState(state));
-
-        uint8 actualState = uint8(sportsBetting.bettingState(fixtureID));
-        assertEq(uint8(state), actualState);
-
-        // When a fixture is opened for betting we expect all historical betters arrays to be initialized with zero address
-        assertEq(sportsBetting.getHistoricalBettersLength(fixtureID,SportsBettingLib.FixtureResult.HOME), 1);
-        assertEq(sportsBetting.getHistoricalBettersLength(fixtureID,SportsBettingLib.FixtureResult.DRAW), 1);
-        assertEq(sportsBetting.getHistoricalBettersLength(fixtureID,SportsBettingLib.FixtureResult.AWAY), 1);
-        assertEq(sportsBetting.historicalBetters(fixtureID,SportsBettingLib.FixtureResult.HOME,0), address(0x0));
-        assertEq(sportsBetting.historicalBetters(fixtureID,SportsBettingLib.FixtureResult.DRAW,0), address(0x0));
-        assertEq(sportsBetting.historicalBetters(fixtureID,SportsBettingLib.FixtureResult.AWAY,0), address(0x0));
     }
 
     // testShouldCloseBetForFixtureIsTooLate asserts that, when closeBetForFixture is called on a fixture
@@ -871,8 +764,6 @@ contract SportsBettingTestSuite is Test, HelperContract {
         // Act
         sportsBetting.stake(fixtureID, betType, addr1Amount);
 
-        // Assert addr1 is now active better
-        assertEq(sportsBetting.activeBetters(fixtureID, betType, addr1), true);
         // Assert bet total amount is increased
         assertEq(sportsBetting.totalAmounts(fixtureID, betType), addr1Amount);
         // Assert staker amounts is increased
@@ -893,8 +784,6 @@ contract SportsBettingTestSuite is Test, HelperContract {
         // Act
         sportsBetting.stake(fixtureID, betType, addr2Amount);
 
-        // Assert addr1 is now active better
-        assertEq(sportsBetting.activeBetters(fixtureID, betType, addr2), true);
         // Assert bet total amount is increased
         assertEq(sportsBetting.totalAmounts(fixtureID, betType), totalAmount);
         // Assert staker amounts is increased
@@ -1326,62 +1215,6 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.unstake(fixtureID, betType, unstakeAmount);
     }
 
-    // testShouldSetActiveBettersFalseOnCompleteUnstake
-    function testShouldSetActiveBettersFalseOnCompleteUnstake(
-        string memory fixtureID, 
-        uint256 ko, 
-        uint256 warpTime, 
-        uint256 betTypeInt,
-        uint256 stakeAmount
-    ) public {
-        // For this test case, assume a valid fixtureID
-        vm.assume(bytes(fixtureID).length > 0);
-        // Assume reasonable fixture KO time
-        vm.assume(ko > 10e9);
-        // Assume non-zero initial stake at least entrance fee
-        vm.assume(stakeAmount > sportsBetting.ENTRANCE_FEE());
-
-        // Bound warpTime to within valid range
-        warpTime = bound(warpTime, ko - sportsBetting.BET_ADVANCE_TIME(), ko - sportsBetting.BET_CUTOFF_TIME());
-        // Bound Bet Type to valid enum value
-        betTypeInt = bound(betTypeInt, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
-        
-        // Infer bet type from input
-        SportsBettingLib.FixtureResult betType = SportsBettingLib.FixtureResult(betTypeInt);
-
-        // Set state to OPEN
-        sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN);
-
-        // Set kickoff time
-        sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
-
-        // Cheat set stake amount
-        sportsBetting.setUserStakeCheat(fixtureID, betType, addr1, stakeAmount);
-        sportsBetting.setTotalStakeCheat(fixtureID, betType, stakeAmount);
-
-        // Cheat set addr1 as active better
-        sportsBetting.setActiveBetterCheat(fixtureID, betType, addr1, true);
-
-        // Warp block.timestamp
-        vm.warp(warpTime);
-
-        // Mock addr1
-        vm.prank(addr1);
-
-        // Mock DAI transfer to return success
-        vm.mockCall(
-            address(mockDAI),
-            abi.encodeWithSelector(mockDAI.transfer.selector),
-            abi.encode(true)
-        );
-
-        // Act
-        sportsBetting.unstake(fixtureID, betType, stakeAmount);
-
-        // For complete unstake, expect user to no longer be an active better
-        assertEq(false, sportsBetting.activeBetters(fixtureID, betType, addr1));
-    }
-
     // testShouldCorrectlyUpdateContractStateOnPartialUnstake
     function testShouldCorrectlyUpdateContractStateOnPartialUnstake(
         string memory fixtureID, 
@@ -1426,9 +1259,6 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.setUserStakeCheat(fixtureID, betType, addr1, stakeAmount);
         sportsBetting.setTotalStakeCheat(fixtureID, betType, stakeAmount+previousTotalStake);
 
-        // Cheat set addr1 as active better
-        sportsBetting.setActiveBetterCheat(fixtureID, betType, addr1, true);
-
         // Warp block.timestamp
         vm.warp(warpTime);
 
@@ -1449,9 +1279,6 @@ contract SportsBettingTestSuite is Test, HelperContract {
 
         // Act
         sportsBetting.unstake(fixtureID, betType, unstakeAmount);
-
-        // For partial unstake, expect user to still be active better
-        assertEq(sportsBetting.activeBetters(fixtureID, betType, addr1), true);
 
         // Assert stake maps updated correctly
         uint256 expectedUserStake = stakeAmount - unstakeAmount;
@@ -1957,15 +1784,302 @@ contract SportsBettingTestSuite is Test, HelperContract {
 
     // handleFixtureCancelledPayout
     // shouldRevertCancelledPayoutIfInvalidState
+    function testShouldRevertCancelledPayoutIfInvalidState(
+        string memory fixtureID
+    ) public {
+        // Set PAYABLE state (which is invalid for this flow)
+        SportsBetting.BettingState invalidState = SportsBetting.BettingState.PAYABLE;
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, invalidState);
+
+        vm.expectRevert("Fixture not cancelled");
+
+        sportsBetting.handleFixtureCancelledPayoutTest(fixtureID);
+    }
+
     // shouldRevertCancelledPayoutIfCallerNotEntitled (no stakes found on fixture)
+    function testShouldRevertCancelledPayoutIfCallerNotEntitled(
+        string memory fixtureID
+    ) public {
+        // Set fixture state to CANCELLED
+        SportsBetting.BettingState cancelledState = SportsBetting.BettingState.CANCELLED;
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, cancelledState);
+
+        vm.expectRevert("No stakes found on this fixture");
+
+        // Addr1 has no stakes on this fixture
+        vm.prank(addr1);
+        sportsBetting.handleFixtureCancelledPayoutTest(fixtureID);
+    }
+
     // shouldCorrectlyPayoutStakerForCancelledFixture
+    function testShouldCorrectlyPayoutStakerForCancelledFixture(
+        string memory fixtureID,
+        uint256 stakeAmount,
+        uint256 betType
+    ) public {
+        // Assume positive stake amount
+        vm.assume(stakeAmount > 0);
+
+        // Bound betType to valid (HOME, DRAW, AWAY)
+        betType = bound(betType, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+
+        // Set fixture state to CANCELLED
+        SportsBetting.BettingState cancelledState = SportsBetting.BettingState.CANCELLED;
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, cancelledState);
+
+        // User stakes stakeAmount on betType
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult(betType), addr1, stakeAmount);
+
+        // Mock DAI transfer to return true
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(true)
+        );
+
+        // Expect BetPayout emit
+        vm.expectEmit(true, true, true, true, address(sportsBetting));
+        // Emit the event we expect to see
+        emit BetPayout(addr1, fixtureID, stakeAmount);
+
+        // Addr1 has no stakes on this fixture
+        vm.prank(addr1);
+        sportsBetting.handleFixtureCancelledPayoutTest(fixtureID);
+
+        // Assume payouts correctly set
+        assertEq(stakeAmount, sportsBetting.payouts(fixtureID, addr1));
+        assertEq(true, sportsBetting.userWasPaid(fixtureID, addr1));
+    }
+
     // shouldCorrectlyPayoutStakerForCancelledFixtureOnMultipleOutcomes
+    function testShouldCorrectlyPayoutStakerForCancelledFixtureOnMultipleOutcomes(
+        string memory fixtureID,
+        uint256 firstStakeAmount,
+        uint256 secondStakeAmount
+    ) public {
+        // Assume positive stake amount
+        firstStakeAmount = bound(firstStakeAmount, 1, 10e30);
+        secondStakeAmount = bound(secondStakeAmount, 1, 10e30);
+        SportsBettingLib.FixtureResult firstBetType = SportsBettingLib.FixtureResult.HOME;
+        SportsBettingLib.FixtureResult secondBetType = SportsBettingLib.FixtureResult.AWAY;
+
+        // Set fixture state to CANCELLED
+        SportsBetting.BettingState cancelledState = SportsBetting.BettingState.CANCELLED;
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, cancelledState);
+
+        // User stakes on different bet types
+        sportsBetting.setUserStakeCheat(fixtureID, firstBetType, addr1, firstStakeAmount);
+        sportsBetting.setUserStakeCheat(fixtureID, secondBetType, addr1, secondStakeAmount);
+
+        // User obligation is total of all stakes
+        uint256 expectedObligation = firstStakeAmount + secondStakeAmount;
+
+        // Mock DAI transfer to return true
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(true)
+        );
+
+        // Expect BetPayout emit
+        vm.expectEmit(true, true, true, true, address(sportsBetting));
+        // Emit the event we expect to see
+        emit BetPayout(addr1, fixtureID, expectedObligation);
+
+        // Addr1 has no stakes on this fixture
+        vm.prank(addr1);
+        sportsBetting.handleFixtureCancelledPayoutTest(fixtureID);
+
+        // Assume payouts correctly set
+        assertEq(expectedObligation, sportsBetting.payouts(fixtureID, addr1));
+        assertEq(true, sportsBetting.userWasPaid(fixtureID, addr1));
+    }
+
     // shouldRevertCancelledPayoutOnTransferFail
+    function testShouldRevertCancelledPayoutOnTransferFail(
+        string memory fixtureID,
+        uint256 stakeAmount,
+        uint256 betType
+    ) public {
+        // Assume positive stake amount
+        vm.assume(stakeAmount > 0);
+
+        // Bound betType to valid (HOME, DRAW, AWAY)
+        betType = bound(betType, uint256(SportsBettingLib.FixtureResult.HOME), uint256(SportsBettingLib.FixtureResult.AWAY));
+
+        // Set fixture state to CANCELLED
+        SportsBetting.BettingState cancelledState = SportsBetting.BettingState.CANCELLED;
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, cancelledState);
+
+        // User stakes stakeAmount on betType
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult(betType), addr1, stakeAmount);
+
+        // Mock DAI transfer to fail
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(false)
+        );
+
+        // Expect revert due to transfer fail
+        vm.expectRevert("Unable to payout staker");
+
+        // Addr1 has no stakes on this fixture
+        vm.prank(addr1);
+        sportsBetting.handleFixtureCancelledPayoutTest(fixtureID);
+    }
 
     // handleCommissionPayout
     // shouldRevertCommissionPayoutIfInvalidState
+    function testShouldRevertCommissionPayoutIfInvalidState(
+        string memory fixtureID
+    ) public {
+        // Set CANCELLED state (which is invalid for this flow)
+        SportsBetting.BettingState invalidState = SportsBetting.BettingState.CANCELLED;
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, invalidState);
+
+        vm.expectRevert("Fixture not payable");
+
+        sportsBetting.handleCommissionPayoutTest(fixtureID);
+    }
+
     // shouldRevertCommissionPayoutIfAlreadyPaid
+    function testShouldRevertCommissionPayoutIfAlreadyPaid(
+        string memory fixtureID
+    ) public {
+        // Set PAYABLE state (which is valid for this flow)
+        SportsBetting.BettingState state = SportsBetting.BettingState.PAYABLE;
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, state);
+
+        // Set that owner was already paid
+        sportsBetting.setCommissionPaidCheat(fixtureID, true);
+
+        // Expect revert
+        vm.expectRevert("Commission already paid.");
+
+        sportsBetting.handleCommissionPayoutTest(fixtureID);
+    }
+
     // shouldRevertCommissionPayoutIfInvalidResult
+    function testShouldRevertCommissionPayoutIfInvalidResult(
+        string memory fixtureID
+    ) public {
+        // Set PAYABLE state (which is valid for this flow)
+        SportsBetting.BettingState state = SportsBetting.BettingState.PAYABLE;
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, state);
+
+        // DEFAULT betType is invalid result
+        SportsBettingLib.FixtureResult invalidResult = SportsBettingLib.FixtureResult.DEFAULT;
+        sportsBetting.setFixtureResultCheat(fixtureID, invalidResult);
+
+        // Expect revert
+        vm.expectRevert("Invalid fixture result.");
+
+        sportsBetting.handleCommissionPayoutTest(fixtureID);
+    }
+
     // shouldCorrectlyPayoutCommission
+    function testShouldCorrectlyPayoutCommission(
+        string memory fixtureID,
+        uint256 addr1StakeOnWinningOutcome,
+        uint256 addr1StakeOnLosingOutcome,
+        uint256 addr2StakeOnWinningOutcome,
+        uint256 addr2StakeOnLosingOutcome
+    ) public {
+        // Set PAYABLE state (which is valid for this flow)
+        SportsBetting.BettingState state = SportsBetting.BettingState.PAYABLE;
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, state);
+
+        // Bound stakes
+        addr1StakeOnWinningOutcome = bound(addr1StakeOnWinningOutcome, 1, 10e30);
+        addr1StakeOnLosingOutcome = bound(addr1StakeOnLosingOutcome, 1, 10e30);
+        addr2StakeOnWinningOutcome = bound(addr2StakeOnWinningOutcome, 1, 10e30);
+        addr2StakeOnLosingOutcome = bound(addr2StakeOnLosingOutcome, 1, 10e30);
+
+        // Set fixture result to HOME
+        SportsBettingLib.FixtureResult result = SportsBettingLib.FixtureResult.HOME;
+        sportsBetting.setFixtureResultCheat(fixtureID, result);
+
+        /////////////////////////////////////////////////////////////
+        // ADDR1 STAKES
+        /////////////////////////////////////////////////////////////
+        // Now set addr1 as a staker on both result and losing outcome
+        sportsBetting.setUserStakeCheat(fixtureID, result, addr1, addr1StakeOnWinningOutcome);
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult.AWAY, addr1, addr1StakeOnLosingOutcome);
+        sportsBetting.setTotalStakeCheat(fixtureID, SportsBettingLib.FixtureResult.AWAY, addr1StakeOnLosingOutcome);
+
+        /////////////////////////////////////////////////////////////
+        // ADDR2 STAKES
+        /////////////////////////////////////////////////////////////
+        // Now set addr2 as a staker on both result and losing outcome
+        sportsBetting.setUserStakeCheat(fixtureID, result, addr2, addr2StakeOnWinningOutcome);
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult.DRAW, addr2, addr2StakeOnWinningOutcome);
+        sportsBetting.setTotalStakeCheat(fixtureID, SportsBettingLib.FixtureResult.DRAW, addr2StakeOnLosingOutcome);
+
+        // TOTALS
+        uint256 totalAmountStakedOnResult = addr1StakeOnWinningOutcome + addr2StakeOnWinningOutcome;
+        sportsBetting.setTotalStakeCheat(fixtureID, result, totalAmountStakedOnResult);
+
+        // Generate expected values
+        uint256 winningAmount = addr1StakeOnWinningOutcome + addr2StakeOnWinningOutcome;
+        uint256 totalAmount = winningAmount + addr1StakeOnLosingOutcome + addr2StakeOnLosingOutcome;
+        uint256 expectedTotalCommission = SportsBettingLib.calculateCommission(totalAmount, winningAmount, sportsBetting.COMMISSION_RATE());
+
+        // Expect BetCommissionPayout emit
+        vm.expectEmit(true, true, true, true, address(sportsBetting));
+        // Emit the event we expect to see
+        emit BetCommissionPayout(fixtureID, expectedTotalCommission);
+
+        // Mock DAI transfer to succeed
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(true)
+        );
+
+        // Act
+        sportsBetting.handleCommissionPayout(fixtureID);
+
+        // Assert state vars set
+        assertEq(expectedTotalCommission, sportsBetting.commissionMap(fixtureID));
+        assertEq(true, sportsBetting.commissionPaid(fixtureID));
+    }
+
     // shouldRevertCommissionPayoutOnTransferFail
+    function testShouldRevertCommissionPayoutOnTransferFail(
+        string memory fixtureID,
+        uint256 stakeAmount
+    ) public {
+        // Assume positive stake > entrace fee
+        stakeAmount = bound(stakeAmount, sportsBetting.ENTRANCE_FEE(), 10e30);
+
+        // Set PAYABLE state (which is valid for this flow)
+        SportsBetting.BettingState state = SportsBetting.BettingState.PAYABLE;
+        sportsBetting.setFixtureBettingStateCheat(fixtureID, state);
+
+        // Set fixture result to HOME
+        SportsBettingLib.FixtureResult result = SportsBettingLib.FixtureResult.HOME;
+        sportsBetting.setFixtureResultCheat(fixtureID, result);
+
+        // Set user stake on winning outcome
+        sportsBetting.setUserStakeCheat(fixtureID, result, addr1, stakeAmount);
+        sportsBetting.setTotalStakeCheat(fixtureID, result, stakeAmount);
+
+        // User also stakes on AWAY (this ensures a commission > 0 is owed to owner)
+        sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult.AWAY, addr1, stakeAmount);
+        sportsBetting.setTotalStakeCheat(fixtureID, SportsBettingLib.FixtureResult.AWAY, stakeAmount);
+
+        // Mock DAI transfer to fail
+        vm.mockCall(
+            address(mockDAI),
+            abi.encodeWithSelector(mockDAI.transfer.selector),
+            abi.encode(false)
+        );
+
+        // Expect revert due to transfer fail
+        vm.expectRevert("Unable to payout owner");
+
+        // Act
+        sportsBetting.handleCommissionPayout(fixtureID);
+    }
 }
