@@ -24,7 +24,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     const daiAddress = deployObj.daiAddress;
     const jobID = deployObj.oracle.jobID;
     const requestFee = BigNumber.from(deployObj.oracle.requestFee); // 0.1 LINK
-    const commissionRate = deployObj.commissionRate;
 
     await deploy('SportsBetting', {
         from: deployer,
@@ -34,8 +33,7 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
             daiAddress,
             linkAddress,
             jobID,
-            requestFee,
-            commissionRate
+            requestFee
         ],
         libraries: {
             SportsBettingLib: sportsBettingLib.address,

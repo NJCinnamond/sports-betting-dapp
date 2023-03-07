@@ -20,13 +20,6 @@ const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
     const requestFee = BigNumber.from(deployObj.oracle.requestFee); // 0.1 LINK
     const commissionRate = deployObj.commissionRate;
 
-    console.log(oracleURI);
-    console.log(oracleOperatorCtx);
-    console.log(linkAddress);
-    console.log(jobID);
-    console.log(requestFee);
-    console.log(commissionRate);
-
     await deploy('SportsBetting', {
         from: deployer,
         args: [

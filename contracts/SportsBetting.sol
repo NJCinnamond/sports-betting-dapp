@@ -7,6 +7,9 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
 import "./SportsBettingLib.sol";
 
+/// @title A contract for sports result staking
+/// @author Nathan Cinnamond
+/// @notice Handles user stakes and allows winning stakers to claim payouts 
 contract SportsBetting is SportsOracleConsumer {
 
     enum BettingState {
@@ -24,8 +27,16 @@ contract SportsBetting is SportsOracleConsumer {
         uint256[3] user;
     }
 
+    /// @notice Event emitted each time the betting state for a fixture changes
+    /// @param fixtureID: the corresponding fixtureID for fixture that has state change
+    /// @param state: the BettingState corresponding to the new state of the fixture
     event BettingStateChanged(string fixtureID, BettingState state);
 
+    /// @notice Event emitted each time a user stakes on a fixture outcome
+    /// @param better: address of the staker
+    /// @param fixtureID: corresponding fixtureID for fixture on which outcome is staked
+    /// @param amount: amount added to total amount staked by better on fixture outcome
+    /// @param betType: outcome of fixtureID that better has staked on
     event BetStaked(
         address indexed better,
         string fixtureID,
@@ -33,6 +44,11 @@ contract SportsBetting is SportsOracleConsumer {
         SportsBettingLib.FixtureResult betType
     );
 
+    /// @notice Event emitted each time a user unstakes on a fixture outcome
+    /// @param better: address of the unstaker
+    /// @param fixtureID: corresponding fixtureID for fixture on which outcome is unstaked
+    /// @param amount: amount subtracted from total amount staked by better on fixture outcome
+    /// @param betType: outcome of fixtureID that better has unstaked on
     event BetUnstaked(
         address indexed better,
         string fixtureID,
@@ -40,10 +56,19 @@ contract SportsBetting is SportsOracleConsumer {
         SportsBettingLib.FixtureResult betType
     );
 
+    /// @notice Event emitted each time a user claims payout on fixture result
+    /// @param better: address of the unstaker
+    /// @param fixtureID: corresponding fixtureID for fixture on outcome which better claims payout
+    /// @param amount: amount paid out to better (original stake plus profit)
     event BetPayout(address indexed better, string fixtureID, uint256 amount);
 
+    /// @notice Event emitted each time owner claims commission on bet payout profits
+    /// @param amount: amount paid out to owner in commission
     event BetCommissionPayout(string indexed fixtureID, uint256 amount);
 
+    /// @notice Event emitted each time a fixture kickoff time is fulfilled by oracle
+    /// @param fixtureID: corresponding fixtureID for fixture with kickoff time fulfilled
+    /// @param kickoffTime: unix timestamp of kickoff time for fixture
     event KickoffTimeUpdated(string fixtureID, uint256 kickoffTime);
 
     SportsBettingLib.FixtureResult[5] public betTypes;
@@ -130,9 +155,8 @@ contract SportsBetting is SportsOracleConsumer {
         emit BettingStateChanged(fixtureID, state);
     }
 
-    // closeBetForFixture closes fixture if it is
-    // 1. Not currently closed AND
-    // 2. eligible to be closed
+    /// @notice Closes fixture if it is 1. Not currently closed AND 2. eligible to be closed
+    /// @param fixtureID: the corresponding fixtureID for fixture to be closed
     function closeBetForFixture(string memory fixtureID) public {
         require(
             bettingState[fixtureID] != BettingState.CLOSED,
@@ -145,11 +169,9 @@ contract SportsBetting is SportsOracleConsumer {
         setFixtureBettingState(fixtureID, BettingState.CLOSED);
     }
 
-    // openBetForFixture makes an API call to oracle. It is expected that this
-    // call will return the kickoff_time and the fulfillFixtureKickoffTime func
-    // will handle the state change to open
-    // This is to ensure we don't open a bet until we have its KO time and
-    // know that it advanced enough in the future
+    /// @notice Makes oracle request to get fixture kickoff time and set fixture state to OPENING
+    /// @notice On fulfillment handle, ctx will open fixture is eligible
+    /// @param fixtureID: the corresponding fixtureID for fixture to be opened
     function openBetForFixture(string memory fixtureID) public {
         require(
             bettingState[fixtureID] == BettingState.CLOSED || bettingState[fixtureID] == BettingState.OPENING,
@@ -158,12 +180,14 @@ contract SportsBetting is SportsOracleConsumer {
         setFixtureBettingState(fixtureID, BettingState.OPENING);
         requestFixtureKickoffTime(fixtureID);
     }
-
-    // Ideally the betting state will change from OPEN -> AWAITING
-    // by virtue of a bet being placed too close to KO time, however
-    // in the event this doesn't happen, this function can be called to
-    // attempt to change state to AWAITING
+    
+    /// @notice Changes fixture betting state to AWAITING if eligible
+    /// @param fixtureID: the corresponding fixtureID for fixture to be set to AWAITING
     function awaitBetForFixture(string memory fixtureID) public {
+        // Ideally the betting state will change from OPEN -> AWAITING
+        // by virtue of a bet being placed too close to KO time, however
+        // in the event this doesn't happen, this function can be called to
+        // attempt to change state to AWAITING
         require(
             bettingState[fixtureID] == BettingState.OPEN,
             "Bet state must be OPEN."
@@ -222,7 +246,15 @@ contract SportsBetting is SportsOracleConsumer {
         );
     }
 
-    function stake(string memory fixtureID, SportsBettingLib.FixtureResult betType, uint256 amount) public virtual {
+    /// @notice Allows user to stake on fixture with ID fixtureID for outcome 'betType' with 'amount'
+    /// @param fixtureID: Corresponding fixtureID for fixture user is staking on
+    /// @param betType: The fixture outcome the msg sender is staking on
+    /// @param amount: The amount of collateral added to user's total stake on fixture outcome
+    function stake(
+        string memory fixtureID, 
+        SportsBettingLib.FixtureResult betType, 
+        uint256 amount) 
+    public {
         // Don't allow stakes if we should be in AWAITING state
         if (fixtureShouldBecomeAwaiting(fixtureID)) {
             setFixtureBettingState(fixtureID, BettingState.AWAITING);
@@ -262,7 +294,10 @@ contract SportsBetting is SportsOracleConsumer {
         );
     }
 
-    // Removes all stake in fixtureID-FixtureResult combo
+    /// @notice Allows user to unstake on fixture with ID fixtureID for outcome 'betType' with 'amount'
+    /// @param fixtureID: Corresponding fixtureID for fixture user is unstaking on
+    /// @param betType: The fixture outcome the msg sender is unstaking on
+    /// @param amount: The amount of collateral subtracted from user's total stake on fixture outcome
     function unstake(
         string memory fixtureID,
         SportsBettingLib.FixtureResult betType,
@@ -303,6 +338,8 @@ contract SportsBetting is SportsOracleConsumer {
         require(dai.transfer(msg.sender, amount), "Unable to transfer DAI.");
     }
 
+    /// @notice Calls consumer contract to request fixture kickoff time from oracle
+    /// @param fixtureID: Corresponding fixtureID for fixture user requests kickoff time for
     function requestFixtureKickoffTime(string memory fixtureID) public {
         bytes32 requestID = requestFixtureKickoffTimeParameter(fixtureID);
         requestKickoffToFixture[requestID] = fixtureID;
@@ -334,6 +371,8 @@ contract SportsBetting is SportsOracleConsumer {
         }
     }
 
+    /// @notice Calls consumer contract to request fixture result from oracle
+    /// @param fixtureID: Corresponding fixtureID for fixture user requests result for
     function requestFixtureResult(string memory fixtureID) public {
         bytes32 requestID = requestFixtureResultParameter(fixtureID);
         requestResultToFixture[requestID] = fixtureID;
@@ -374,6 +413,8 @@ contract SportsBetting is SportsOracleConsumer {
         }
     }
 
+    /// @notice Transfers user winnings on fixture if applicable
+    /// @param fixtureID: Corresponding fixtureID for fixture user withdraws winnings for
     function withdrawPayout(string memory fixtureID)
         public
     {
@@ -458,6 +499,8 @@ contract SportsBetting is SportsOracleConsumer {
         );
     }
 
+    /// @notice Transfers owner commission on fixture if applicable
+    /// @param fixtureID: Corresponding fixtureID for fixture owner withdraws commission for
     function handleCommissionPayout(string memory fixtureID) public {
         require(bettingState[fixtureID] == BettingState.PAYABLE, "Fixture not payable");
         require(!commissionPaid[fixtureID], "Commission already paid.");
@@ -505,6 +548,10 @@ contract SportsBetting is SportsOracleConsumer {
         return amount;
     }
 
+    /// @notice Gets total and user stakes on all outcomes for fixture
+    /// @param fixtureID: Corresponding fixtureID for fixture outcomes
+    /// @param user: Address of user corresponding to user fixture stakes
+    /// @return FixtureEnrichment struct containing fixture state, user stakes and total stakes
     function getEnrichedFixtureData(string memory fixtureID, address user)
         public
         view
