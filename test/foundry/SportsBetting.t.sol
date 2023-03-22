@@ -2,7 +2,7 @@
 pragma solidity ^0.8.12;
 
 import "forge-std/Test.sol";
-import "contracts/test/SportsBettingTest.sol";
+import "test/mocks/SportsBettingTest.sol";
 import { MockDAI, MockLINK, HelperContract } from "test/foundry/helpers.sol";
 
 contract SportsBettingTestSuite is Test, HelperContract {
@@ -149,7 +149,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.setFixtureKickoffTimeCheat(fixtureID, ko);
 
         // Expect revert
-        vm.expectRevert("Bet state is already CLOSED.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidBettingStateTransition.selector, SportsBetting.BettingState.CLOSED, SportsBetting.BettingState.CLOSED)
+        );
 
         // Act
         sportsBetting.closeBetForFixture(fixtureID);
@@ -184,21 +186,25 @@ contract SportsBettingTestSuite is Test, HelperContract {
         vm.warp(warpTime);
 
         // Expect revert
-        vm.expectRevert("Fixture ineligible to be closed.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidBettingStateTransition.selector, SportsBetting.BettingState.OPENING, SportsBetting.BettingState.CLOSED)
+        );
 
         // Act
         sportsBetting.closeBetForFixture(fixtureID);
     }
 
-    // testShouldFailOpeningBetForFixtureAlreadyClosed asserts that, when openBetForFixture is called on a fixture
+    // testShouldFailOpeningBetForFixtureNotClosedOrOpening asserts that, when openBetForFixture is called on a fixture
     // that is not CLOSED OR OPENING
     // 1. The call should revert
-    function testShouldFailOpeningBetForFixtureAlreadyClosed(string memory fixtureID) public {
+    function testShouldFailOpeningBetForFixtureNotClosedOrOpening(string memory fixtureID) public {
         // Make this fixture OPEN
         sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.OPEN); 
 
         // Expect revert
-        vm.expectRevert("State must be CLOSED or OPENING.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidBettingStateTransition.selector, SportsBetting.BettingState.OPEN, SportsBetting.BettingState.OPEN)
+        );
 
         // Act
         sportsBetting.openBetForFixture(fixtureID);
@@ -278,7 +284,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState.CLOSED); 
 
         // Expect revert
-        vm.expectRevert("Bet state must be OPEN.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidBettingStateTransition.selector, SportsBetting.BettingState.CLOSED, SportsBetting.BettingState.AWAITING)
+        );
 
         // Act
         sportsBetting.awaitBetForFixture(fixtureID);
@@ -304,7 +312,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         vm.warp(warpTime);
 
         // Expect revert
-        vm.expectRevert("Fixture ineligible for AWAITING.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidBettingStateTransition.selector, SportsBetting.BettingState.OPEN, SportsBetting.BettingState.AWAITING)
+        );
 
         // Act
         sportsBetting.awaitBetForFixture(fixtureID);
@@ -1626,7 +1636,7 @@ contract SportsBettingTestSuite is Test, HelperContract {
         // Calculate expected obligation (amount paid to addr1)
         // This is equal to total amount (as better was only better on winning outcome) MINUS commission
         uint256 expectedObligation = addr1StakeOnWinningOutcome + addr1StakeOnLosingOutcome;
-        uint256 expectedCommission = (sportsBetting.COMMISSION_RATE() * (expectedObligation-addr1StakeOnWinningOutcome)) / 100;
+        uint256 expectedCommission = (sportsBetting.COMMISSION_RATE() * (expectedObligation-addr1StakeOnWinningOutcome)) / 10_000;
         expectedObligation -= expectedCommission;
 
         // Expect BetPayout emit
@@ -1693,11 +1703,11 @@ contract SportsBettingTestSuite is Test, HelperContract {
         // OBLGIATIONS AND COMMISSION
         // Calculate expected obligation (amount paid out)
         uint256 addr1ExpectedObligation = (addr1StakeOnWinningOutcome * totalAmountStaked) / totalAmountStakedOnResult;
-        uint256 addr1ExpectedCommission = (sportsBetting.COMMISSION_RATE() * (addr1ExpectedObligation-addr1StakeOnWinningOutcome)) / 100;
+        uint256 addr1ExpectedCommission = (sportsBetting.COMMISSION_RATE() * (addr1ExpectedObligation-addr1StakeOnWinningOutcome)) / 10_000;
         addr1ExpectedObligation -= addr1ExpectedCommission;
 
         uint256 addr2ExpectedObligation = (addr2StakeOnWinningOutcome * totalAmountStaked) / totalAmountStakedOnResult;
-        uint256 addr2ExpectedCommission = (sportsBetting.COMMISSION_RATE() * (addr2ExpectedObligation-addr2StakeOnWinningOutcome)) / 100;
+        uint256 addr2ExpectedCommission = (sportsBetting.COMMISSION_RATE() * (addr2ExpectedObligation-addr2StakeOnWinningOutcome)) / 10_000;
         addr2ExpectedObligation -= addr2ExpectedCommission;
 
         /////////////////////////////////////////////////////////////////
@@ -2038,7 +2048,7 @@ contract SportsBettingTestSuite is Test, HelperContract {
         );
 
         // Act
-        sportsBetting.handleCommissionPayout(fixtureID);
+        sportsBetting.handleCommissionPayoutTest(fixtureID);
 
         // Assert state vars set
         assertEq(expectedTotalCommission, sportsBetting.commissionMap(fixtureID));
@@ -2080,6 +2090,6 @@ contract SportsBettingTestSuite is Test, HelperContract {
         vm.expectRevert("Unable to payout owner");
 
         // Act
-        sportsBetting.handleCommissionPayout(fixtureID);
+        sportsBetting.handleCommissionPayoutTest(fixtureID);
     }
 }

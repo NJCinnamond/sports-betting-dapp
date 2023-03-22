@@ -2,7 +2,7 @@
 pragma solidity ^0.8.12;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "contracts/test/SportsBettingTest.sol";
+import "test/mocks/SportsBettingTest.sol";
 
 contract MockDAI is ERC20 {
     constructor() ERC20("Name", "DAI") {
@@ -35,14 +35,14 @@ abstract contract HelperContract {
 
     event BetStaked(
         address indexed better,
-        string fixtureID,
+        string indexed fixtureID,
         uint256 amount,
         SportsBettingLib.FixtureResult betType
     );
 
     event BetUnstaked(
         address indexed better,
-        string fixtureID,
+        string indexed fixtureID,
         uint256 amount,
         SportsBettingLib.FixtureResult betType
     );

@@ -2,7 +2,6 @@
 pragma solidity ^0.8.12;
 
 import "@chainlink/contracts/src/v0.8/ChainlinkClient.sol";
-//import "./mock/IERC20.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /**
@@ -82,7 +81,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
      * @notice Request fixture kickoff time from the oracle in a single transaction
      */
     function requestFixtureKickoffTimeParameter(string memory fixtureID)
-        public
+        internal
         hasLinkFee
         returns (bytes32)
     {
@@ -101,7 +100,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
     }
 
     function rawFulfillFixtureKickoffTime(bytes32 requestId, uint256 ko)
-        public
+        external
         recordChainlinkFulfillment(requestId)
     {
         require(msg.sender == chainlink, "Only ChainlinkClient can fulfill");
@@ -116,7 +115,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
      * @notice Request fixture result from the oracle in a single transaction
      */
     function requestFixtureResultParameter(string memory fixtureID)
-        public
+        internal
         hasLinkFee
         returns (bytes32)
     {
@@ -135,7 +134,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
     }
 
     function rawFulfillFixtureResult(bytes32 requestId, uint256 result)
-        public
+        external
         recordChainlinkFulfillment(requestId)
     {
         require(msg.sender == chainlink, "Only ChainlinkClient can fulfill");
@@ -147,7 +146,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
         virtual;
 
     // Anybody can transfer LINK to ctx
-    function transferLink(uint256 amount) public {
+    function transferLink(uint256 amount) external {
         IERC20 link = IERC20(chainlinkTokenAddress());
         require(
             link.transferFrom(msg.sender, address(this), amount),
@@ -160,7 +159,7 @@ abstract contract SportsOracleConsumer is ChainlinkClient {
     /**
      * Allow withdraw of Link tokens from the contract
      */
-    function withdrawLink(uint256 amount) public {
+    function withdrawLink(uint256 amount) external {
         require(amount <= userToLink[msg.sender], "You don't have enough link");
         userToLink[msg.sender] -= amount;
 

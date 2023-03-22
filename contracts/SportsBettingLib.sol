@@ -20,14 +20,8 @@ library SportsBettingLib {
     function getFixtureResultFromAPIResponse(
         uint256 result
     ) external pure returns (FixtureResult) {
-        if (result == uint256(FixtureResult.HOME)) {
-            return FixtureResult.HOME;
-        } else if (result == uint256(FixtureResult.DRAW)) {
-            return FixtureResult.DRAW;
-        } else if (result == uint256(FixtureResult.AWAY)) {
-            return FixtureResult.AWAY;
-        } else if (result == uint256(FixtureResult.CANCELLED)) {
-            return FixtureResult.CANCELLED;
+        if (result <= type(uint8).max && result < 5) {
+            return FixtureResult(result);
         }
         return FixtureResult.DEFAULT;
     }
@@ -40,10 +34,10 @@ library SportsBettingLib {
         FixtureResult[] memory losingOutcomes = new FixtureResult[](2);
 
         uint256 losingOutcomesIndex = 0;
-        for (uint256 i = uint256(FixtureResult.HOME); i <= uint256(FixtureResult.AWAY); i++) {
+        for (uint256 i = uint256(FixtureResult.HOME); i <= uint256(FixtureResult.AWAY); ++i) {
             if (FixtureResult(i) != winningOutcome) {
                 losingOutcomes[losingOutcomesIndex] = FixtureResult(i);
-                losingOutcomesIndex += 1;
+                ++losingOutcomesIndex;
             }
         }
         return losingOutcomes;
@@ -65,7 +59,6 @@ library SportsBettingLib {
         if (!flag) {
             revert("Division by zero");
         }
-        
         return obligation;
     }
 
@@ -76,16 +69,11 @@ library SportsBettingLib {
     ) public pure returns(uint256) {
         bool flag;
         uint256 profit;
-        uint256 commission;
         (flag, profit) = SafeMath.trySub(stakerObligation, stakerAmount);
         if (!flag) {
             revert("Underflow calculating profit");
         }
-        (flag, commission) = SafeMath.tryMul(commissionRate, profit);
-        if (!flag) {
-            revert("Overflow calculating commission");
-        }
-        // Divide by 100 as COMMISSION_RATE is in percentage terms
-        return commission / 100;
+        // Divide by 10_000 as commissionRate is expressed in basis points
+        return (profit * commissionRate) / 10_000;
     }
 }

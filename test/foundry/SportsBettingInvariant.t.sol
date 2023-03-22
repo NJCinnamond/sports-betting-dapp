@@ -6,7 +6,7 @@ import "forge-std/InvariantTest.sol";
 import {CommonBase} from "forge-std/Base.sol";
 import {StdCheats} from "forge-std/StdCheats.sol";
 import {StdUtils} from "forge-std/StdUtils.sol";
-import "contracts/test/SportsBettingTest.sol";
+import "test/mocks/SportsBettingTest.sol";
 import { MockDAI, MockLINK, HelperContract } from "test/foundry/helpers.sol";
 
 contract SportsBettingInvariantHandler is CommonBase, StdCheats, StdUtils {

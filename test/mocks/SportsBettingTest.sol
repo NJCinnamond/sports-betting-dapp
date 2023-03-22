@@ -1,8 +1,8 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.12;
 
-import "../SportsBetting.sol";
-import "../SportsBettingLib.sol";
+import "../../contracts/SportsBetting.sol";
+import "../../contracts/SportsBettingLib.sol";
 
 contract SportsBettingTest is SportsBetting {
     uint256 public linkFee;
@@ -148,30 +148,10 @@ contract SportsBettingTest is SportsBetting {
         updateKickoffTime(fixtureID, ko);
     }
 
-    /*function fulfillFixturePayoutObligationsTest(
-        string memory fixtureID,
-        SportsBettingLib.BetType result,
-        uint256 winningAmount,
-        uint256 totalAmount
-    ) public {
-        fulfillFixturePayoutObligations(
-            fixtureID,
-            result,
-            winningAmount,
-            totalAmount
-        );
-    }*/
-
     function getTotalAmountBetOnFixtureOutcomesTest(
         string memory fixtureID,
         SportsBettingLib.FixtureResult[] memory outcomes
     ) public view returns (uint256) {
         return getTotalAmountBetOnFixtureOutcomes(fixtureID, outcomes);
     }
-
-    /*function updateFixtureResultTest(string memory fixtureID, uint256 _result)
-        public
-    {
-        updateFixtureResult(fixtureID, _result);
-    }*/
 }

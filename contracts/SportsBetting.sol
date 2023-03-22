@@ -1,7 +1,6 @@
 //SPDX-License-Identifier: Unlicense
 pragma solidity ^0.8.12;
 
-//import "./mock/IERC20.sol";
 import "./SportsOracleConsumer.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/math/SafeMath.sol";
@@ -39,7 +38,7 @@ contract SportsBetting is SportsOracleConsumer {
     /// @param betType: outcome of fixtureID that better has staked on
     event BetStaked(
         address indexed better,
-        string fixtureID,
+        string indexed fixtureID,
         uint256 amount,
         SportsBettingLib.FixtureResult betType
     );
@@ -51,7 +50,7 @@ contract SportsBetting is SportsOracleConsumer {
     /// @param betType: outcome of fixtureID that better has unstaked on
     event BetUnstaked(
         address indexed better,
-        string fixtureID,
+        string indexed fixtureID,
         uint256 amount,
         SportsBettingLib.FixtureResult betType
     );
@@ -71,8 +70,6 @@ contract SportsBetting is SportsOracleConsumer {
     /// @param kickoffTime: unix timestamp of kickoff time for fixture
     event KickoffTimeUpdated(string fixtureID, uint256 kickoffTime);
 
-    SportsBettingLib.FixtureResult[5] public betTypes;
-
     // Contract owner
     address public immutable owner;
 
@@ -82,8 +79,9 @@ contract SportsBetting is SportsOracleConsumer {
     // Entrance fee of 0.0001 DAI (10^14 Wei)
     uint256 public constant ENTRANCE_FEE = 10e14;
 
-    // Commission rate percentage taken by contract owner for each payout as a percentage
-    uint256 public constant COMMISSION_RATE = 1;
+    // Commission rate taken by contract owner for each payout in basis points
+    // Note: 100 BPS = 1%
+    uint256 public constant COMMISSION_RATE = 100;
 
     // Max time before a fixture kick-off that a bet can be placed in seconds
     // A fixture bet state will not move to OPEN before a time to the left of the
@@ -129,6 +127,11 @@ contract SportsBetting is SportsOracleConsumer {
     // Map of fixture ID to whether commission was paid to owner for this fixture
     mapping(string => bool) public commissionPaid;
 
+    /// Invalid condition for fixture state transition from current->potential. 
+    /// @param current bet state
+    /// @param potential bet state
+    error InvalidBettingStateTransition(BettingState current, BettingState potential);
+
     constructor(
         string memory _sportsOracleURI,
         address _oracle,
@@ -137,12 +140,6 @@ contract SportsBetting is SportsOracleConsumer {
         string memory _jobId,
         uint256 _fee
     ) SportsOracleConsumer(_sportsOracleURI, _oracle, _link, _jobId, _fee) {
-        betTypes[0] = SportsBettingLib.FixtureResult.DEFAULT;
-        betTypes[1] = SportsBettingLib.FixtureResult.CANCELLED;
-        betTypes[2] = SportsBettingLib.FixtureResult.HOME;
-        betTypes[3] = SportsBettingLib.FixtureResult.DRAW;
-        betTypes[4] = SportsBettingLib.FixtureResult.AWAY;
-
         owner = msg.sender;
         daiAddress = _dai;
     }
@@ -158,14 +155,9 @@ contract SportsBetting is SportsOracleConsumer {
     /// @notice Closes fixture if it is 1. Not currently closed AND 2. eligible to be closed
     /// @param fixtureID: the corresponding fixtureID for fixture to be closed
     function closeBetForFixture(string memory fixtureID) public {
-        require(
-            bettingState[fixtureID] != BettingState.CLOSED,
-            "Bet state is already CLOSED."
-        );
-        require(
-            fixtureShouldBecomeClosed(fixtureID),
-            "Fixture ineligible to be closed."
-        );
+        if (bettingState[fixtureID] == BettingState.CLOSED || !fixtureShouldBecomeClosed(fixtureID)) {
+            revert InvalidBettingStateTransition(bettingState[fixtureID], BettingState.CLOSED);
+        }
         setFixtureBettingState(fixtureID, BettingState.CLOSED);
     }
 
@@ -173,10 +165,9 @@ contract SportsBetting is SportsOracleConsumer {
     /// @notice On fulfillment handle, ctx will open fixture is eligible
     /// @param fixtureID: the corresponding fixtureID for fixture to be opened
     function openBetForFixture(string memory fixtureID) public {
-        require(
-            bettingState[fixtureID] == BettingState.CLOSED || bettingState[fixtureID] == BettingState.OPENING,
-            "State must be CLOSED or OPENING."
-        );
+        if (bettingState[fixtureID] != BettingState.CLOSED && bettingState[fixtureID] != BettingState.OPENING) {
+            revert InvalidBettingStateTransition(bettingState[fixtureID], BettingState.OPEN);
+        }
         setFixtureBettingState(fixtureID, BettingState.OPENING);
         requestFixtureKickoffTime(fixtureID);
     }
@@ -188,14 +179,9 @@ contract SportsBetting is SportsOracleConsumer {
         // by virtue of a bet being placed too close to KO time, however
         // in the event this doesn't happen, this function can be called to
         // attempt to change state to AWAITING
-        require(
-            bettingState[fixtureID] == BettingState.OPEN,
-            "Bet state must be OPEN."
-        );
-        require(
-            fixtureShouldBecomeAwaiting(fixtureID),
-            "Fixture ineligible for AWAITING."
-        );
+        if (bettingState[fixtureID] != BettingState.OPEN || !fixtureShouldBecomeAwaiting(fixtureID)) {
+            revert InvalidBettingStateTransition(bettingState[fixtureID], BettingState.AWAITING);
+        }
         setFixtureBettingState(fixtureID, BettingState.AWAITING);
     }
 
@@ -253,8 +239,8 @@ contract SportsBetting is SportsOracleConsumer {
     function stake(
         string memory fixtureID, 
         SportsBettingLib.FixtureResult betType, 
-        uint256 amount) 
-    public {
+        uint256 amount
+    ) public {
         // Don't allow stakes if we should be in AWAITING state
         if (fixtureShouldBecomeAwaiting(fixtureID)) {
             setFixtureBettingState(fixtureID, BettingState.AWAITING);
@@ -416,7 +402,7 @@ contract SportsBetting is SportsOracleConsumer {
     /// @notice Transfers user winnings on fixture if applicable
     /// @param fixtureID: Corresponding fixtureID for fixture user withdraws winnings for
     function withdrawPayout(string memory fixtureID)
-        public
+        external
     {
         require(
             bettingState[fixtureID] == BettingState.PAYABLE || bettingState[fixtureID] == BettingState.CANCELLED,
@@ -476,13 +462,13 @@ contract SportsBetting is SportsOracleConsumer {
         );
     }
 
-    function handleFixtureCancelledPayout(string memory fixtureID)
-        internal
-    {
+    function handleFixtureCancelledPayout(string memory fixtureID) internal {
         require(bettingState[fixtureID] == BettingState.CANCELLED, "Fixture not cancelled");
+
         uint256 obligation = 0;
-        for (uint256 i = 0; i < betTypes.length; i++) {
-            obligation += amounts[fixtureID][betTypes[i]][msg.sender];
+        uint8 maxBetType = uint8(SportsBettingLib.FixtureResult.AWAY) + 1;
+        for (uint8 i = 0; i < maxBetType; i++) {
+            obligation += amounts[fixtureID][SportsBettingLib.FixtureResult(i)][msg.sender];
         }
         require(obligation > 0, "No stakes found on this fixture");
 
@@ -501,7 +487,7 @@ contract SportsBetting is SportsOracleConsumer {
 
     /// @notice Transfers owner commission on fixture if applicable
     /// @param fixtureID: Corresponding fixtureID for fixture owner withdraws commission for
-    function handleCommissionPayout(string memory fixtureID) public {
+    function handleCommissionPayout(string memory fixtureID) internal {
         require(bettingState[fixtureID] == BettingState.PAYABLE, "Fixture not payable");
         require(!commissionPaid[fixtureID], "Commission already paid.");
 
@@ -553,7 +539,7 @@ contract SportsBetting is SportsOracleConsumer {
     /// @param user: Address of user corresponding to user fixture stakes
     /// @return FixtureEnrichment struct containing fixture state, user stakes and total stakes
     function getEnrichedFixtureData(string memory fixtureID, address user)
-        public
+        external
         view
         returns (FixtureEnrichment memory)
     {
