@@ -132,6 +132,26 @@ contract SportsBetting is SportsOracleConsumer {
     /// @param potential bet state
     error InvalidBettingStateTransition(BettingState current, BettingState potential);
 
+    /// Invalid betting state to perform the action
+    /// @param action e.g. stake
+    /// @param current bet state
+    /// @param required bet state
+    error InvalidBettingStateForAction(string action, BettingState current, BettingState required);
+
+    /// Invalid amount staked or unstaked
+    /// @param fixtureID fixtureID corresponding to this action
+    /// @param betType betType of the stake action
+    /// @param amount amount being staked/unstaked
+    /// @param reason human-readable explanation
+    error InvalidStakeAction(string fixtureID, SportsBettingLib.FixtureResult betType, uint256 amount, string reason);
+
+    /// Invalid amount staked or unstaked
+    /// @param fixtureID fixtureID corresponding to this action
+    /// @param state betting state of this fixture
+    /// @param result fixture result
+    /// @param reason human-readable explanation
+    error InvalidPayoutAction(string fixtureID, BettingState state, SportsBettingLib.FixtureResult result, string reason);
+
     constructor(
         string memory _sportsOracleURI,
         address _oracle,
@@ -252,8 +272,12 @@ contract SportsBetting is SportsOracleConsumer {
             betType != SportsBettingLib.FixtureResult.DEFAULT && 
             betType != SportsBettingLib.FixtureResult.CANCELLED, 
             "This BetType is not permitted.");
-        require(bettingState[fixtureID] == BettingState.OPEN, "Bet activity is not open.");
-        require(amount >= ENTRANCE_FEE, "Amount is below entrance fee.");
+        if (bettingState[fixtureID] != BettingState.OPEN) {
+            revert InvalidBettingStateForAction("stake", bettingState[fixtureID], BettingState.OPEN);
+        }
+        if (amount < ENTRANCE_FEE) {
+            revert InvalidStakeAction(fixtureID, betType, amount, "Amount is below entrance fee.");
+        }
 
         bool flag;
         uint256 newStakerAmount;
@@ -296,22 +320,30 @@ contract SportsBetting is SportsOracleConsumer {
         }
 
         // Betting must be in OPEN state for this fixture
-        require(bettingState[fixtureID] == BettingState.OPEN, "Bet activity is not open.");
+        if (bettingState[fixtureID] != BettingState.OPEN) {
+            revert InvalidBettingStateForAction("unstake", bettingState[fixtureID], BettingState.OPEN);
+        }
 
         // Impose requirements on unstake value
-        require(amount > 0, "Amount should exceed zero.");
+        if (amount <= 0) {
+            revert InvalidStakeAction(fixtureID, betType, amount, "Amount should exceed zero.");
+        }
 
         // Impose requirements on user's stake if this unstake occurs
         uint256 amountStaked = amounts[fixtureID][betType][msg.sender];
-        require(amountStaked > 0, "No stake on this address-result.");
-        require(amount <= amountStaked, "Current stake too low.");
+        if (amountStaked <= 0) {
+            revert InvalidStakeAction(fixtureID, betType, amount, "No stake on this address-result.");
+        }
+        if (amount > amountStaked) {
+            revert InvalidStakeAction(fixtureID, betType, amount, "Current stake too low.");
+        }
 
         // New value for user stake on this fixture-betType combo
         uint256 newStakerAmount = amountStaked - amount;
 
         // If this is a partial unstake, ensure ENTRANCE_FEE is maintained
-        if (newStakerAmount > 0) {
-            require(newStakerAmount >= ENTRANCE_FEE, "Cannot go below entrance fee.");
+        if (newStakerAmount > 0 && newStakerAmount < ENTRANCE_FEE) {
+            revert InvalidStakeAction(fixtureID, betType, amount, "Cannot go below entrance fee for partial unstake.");
         }
 
         // Update state
@@ -404,13 +436,14 @@ contract SportsBetting is SportsOracleConsumer {
     function withdrawPayout(string memory fixtureID)
         external
     {
-        require(
-            bettingState[fixtureID] == BettingState.PAYABLE || bettingState[fixtureID] == BettingState.CANCELLED,
-            "State not PAYABLE or CANCELLED."
-        );
+        if (bettingState[fixtureID] != BettingState.PAYABLE && bettingState[fixtureID] != BettingState.CANCELLED) {
+            revert InvalidPayoutAction(fixtureID, bettingState[fixtureID], results[fixtureID], "State not PAYABLE or CANCELLED.");
+        }
 
         // Require user has not received payout for this fixture
-        require(!userWasPaid[fixtureID][msg.sender], "Already paid.");
+        if (userWasPaid[fixtureID][msg.sender]) {
+            revert InvalidPayoutAction(fixtureID, bettingState[fixtureID], results[fixtureID], "User already paid.");
+        }
 
         if (bettingState[fixtureID] == BettingState.PAYABLE) {
             handleWithdrawPayout(fixtureID);
@@ -424,12 +457,14 @@ contract SportsBetting is SportsOracleConsumer {
     {
         SportsBettingLib.FixtureResult result = results[fixtureID];
         if (result == SportsBettingLib.FixtureResult.DEFAULT || result == SportsBettingLib.FixtureResult.CANCELLED) {
-            revert("Invalid fixture result.");
+            revert InvalidPayoutAction(fixtureID, bettingState[fixtureID], result, "Invalid fixture result.");
         }
 
         // Require user had staked on winning result
         uint256 stakerAmount = amounts[fixtureID][result][msg.sender];
-        require(stakerAmount > 0, "You did not stake on the winning outcome");
+        if (stakerAmount <= 0) {
+            revert InvalidPayoutAction(fixtureID, bettingState[fixtureID], result, "You did not stake on the winning outcome.");
+        }
 
         SportsBettingLib.FixtureResult[] memory winningOutcomes = new SportsBettingLib.FixtureResult[](1);
         winningOutcomes[0] = result;
@@ -463,14 +498,18 @@ contract SportsBetting is SportsOracleConsumer {
     }
 
     function handleFixtureCancelledPayout(string memory fixtureID) internal {
-        require(bettingState[fixtureID] == BettingState.CANCELLED, "Fixture not cancelled");
+        if (bettingState[fixtureID] != BettingState.CANCELLED) {
+            revert InvalidPayoutAction(fixtureID, bettingState[fixtureID], results[fixtureID], "Fixture not cancelled.");
+        }
 
         uint256 obligation = 0;
         uint8 maxBetType = uint8(SportsBettingLib.FixtureResult.AWAY) + 1;
         for (uint8 i = 0; i < maxBetType; i++) {
             obligation += amounts[fixtureID][SportsBettingLib.FixtureResult(i)][msg.sender];
         }
-        require(obligation > 0, "No stakes found on this fixture");
+        if (obligation == 0) {
+            revert InvalidPayoutAction(fixtureID, bettingState[fixtureID], results[fixtureID], "No stakes found on this fixture.");
+        }
 
         // Set bet payout states
         payouts[fixtureID][msg.sender] = obligation;
@@ -488,12 +527,16 @@ contract SportsBetting is SportsOracleConsumer {
     /// @notice Transfers owner commission on fixture if applicable
     /// @param fixtureID: Corresponding fixtureID for fixture owner withdraws commission for
     function handleCommissionPayout(string memory fixtureID) internal {
-        require(bettingState[fixtureID] == BettingState.PAYABLE, "Fixture not payable");
-        require(!commissionPaid[fixtureID], "Commission already paid.");
+        if (bettingState[fixtureID] != BettingState.PAYABLE) {
+            revert InvalidPayoutAction(fixtureID, bettingState[fixtureID], results[fixtureID], "Fixture not payable.");
+        }
+        if (commissionPaid[fixtureID]) {
+            revert InvalidPayoutAction(fixtureID, bettingState[fixtureID], results[fixtureID], "Commission already paid.");
+        }
 
         SportsBettingLib.FixtureResult result = results[fixtureID];
         if (result == SportsBettingLib.FixtureResult.DEFAULT || result == SportsBettingLib.FixtureResult.CANCELLED) {
-            revert("Invalid fixture result.");
+            revert InvalidPayoutAction(fixtureID, bettingState[fixtureID], result, "Invalid fixture result.");
         }
 
         // Commission of COMMISSION RATE % is taken from total staker profits

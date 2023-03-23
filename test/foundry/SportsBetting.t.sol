@@ -676,7 +676,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         vm.warp(warpTime);
 
         // Expect revert for invalid bet type
-        vm.expectRevert("Bet activity is not open.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidBettingStateForAction.selector, "stake", SportsBetting.BettingState.CLOSED, SportsBetting.BettingState.OPEN)
+        );
 
         // Act
         sportsBetting.stake(fixtureID, betType, amount);
@@ -716,7 +718,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         vm.warp(warpTime);
 
         // Expect revert for invalid bet type
-        vm.expectRevert("Amount is below entrance fee.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidStakeAction.selector, fixtureID, betType, amount, "Amount is below entrance fee.")
+        );
 
         // Act
         sportsBetting.stake(fixtureID, betType, amount);
@@ -1034,7 +1038,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         vm.warp(warpTime);
 
         // Expect revert for invalid bet type
-        vm.expectRevert("Bet activity is not open.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidBettingStateForAction.selector, "unstake", SportsBetting.BettingState.CLOSED, SportsBetting.BettingState.OPEN)
+        );
 
         // Act
         sportsBetting.unstake(fixtureID, betType, unstakeAmount);
@@ -1073,7 +1079,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         vm.warp(warpTime);
 
         // Expect revert for zero unstake
-        vm.expectRevert("Amount should exceed zero.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidStakeAction.selector, fixtureID, betType, unstakeAmount, "Amount should exceed zero.")
+        );
 
         // Act
         sportsBetting.unstake(fixtureID, betType, unstakeAmount);
@@ -1112,7 +1120,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         vm.warp(warpTime);
 
         // Expect revert when no current stake exists
-        vm.expectRevert("No stake on this address-result.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidStakeAction.selector, fixtureID, betType, unstakeAmount, "No stake on this address-result.")
+        );
 
         // Act
         sportsBetting.unstake(fixtureID, betType, unstakeAmount);
@@ -1167,7 +1177,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         vm.prank(addr1);
 
         // Expect revert when going below entrance fee for partial unstake
-        vm.expectRevert("Cannot go below entrance fee.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidStakeAction.selector, fixtureID, betType, unstakeAmount, "Cannot go below entrance fee for partial unstake.")
+        );
 
         // Act
         sportsBetting.unstake(fixtureID, betType, unstakeAmount);
@@ -1219,7 +1231,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         vm.prank(addr1);
 
         // Expect revert when trying to unstake more than current stake
-        vm.expectRevert("Current stake too low.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidStakeAction.selector, fixtureID, betType, unstakeAmount, "Current stake too low.")
+        );
 
         // Act
         sportsBetting.unstake(fixtureID, betType, unstakeAmount);
@@ -1488,7 +1502,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.setFixtureBettingStateCheat(fixtureID, SportsBetting.BettingState(state));
         
         // Expect revert
-        vm.expectRevert("State not PAYABLE or CANCELLED.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidPayoutAction.selector, fixtureID, state, 0, "State not PAYABLE or CANCELLED.")
+        );
 
         // Act
         sportsBetting.withdrawPayout(fixtureID);
@@ -1509,7 +1525,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.setUserWasPaidCheat(fixtureID, addr1, true);
 
         // Expect revert
-        vm.expectRevert("Already paid.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidPayoutAction.selector, fixtureID, state, 0, "User already paid.")
+        );
 
         // Act
         vm.prank(addr1);
@@ -1527,7 +1545,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.setFixtureResultCheat(fixtureID, SportsBettingLib.FixtureResult(result));
 
         // Expect revert
-        vm.expectRevert("Invalid fixture result.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidPayoutAction.selector, fixtureID, 0, result, "Invalid fixture result.")
+        );
 
         // Act
         sportsBetting.handleWithdrawPayoutTest(fixtureID);
@@ -1543,7 +1563,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.setFixtureResultCheat(fixtureID, SportsBettingLib.FixtureResult(result));
 
         // Expect revert as addr1 has not staked on any outcome
-        vm.expectRevert("You did not stake on the winning outcome");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidPayoutAction.selector, fixtureID, 0, result, "You did not stake on the winning outcome.")
+        );
 
         // Act
         vm.prank(addr1);
@@ -1566,7 +1588,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.setUserStakeCheat(fixtureID, SportsBettingLib.FixtureResult.AWAY, addr1, stakeAmount);
 
         // Expect revert as addr1 has not staked on any outcome
-        vm.expectRevert("You did not stake on the winning outcome");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidPayoutAction.selector, fixtureID, 0, result, "You did not stake on the winning outcome.")
+        );
 
         // Act
         vm.prank(addr1);
@@ -1801,7 +1825,10 @@ contract SportsBettingTestSuite is Test, HelperContract {
         SportsBetting.BettingState invalidState = SportsBetting.BettingState.PAYABLE;
         sportsBetting.setFixtureBettingStateCheat(fixtureID, invalidState);
 
-        vm.expectRevert("Fixture not cancelled");
+        // Expect revert
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidPayoutAction.selector, fixtureID, invalidState, 0, "Fixture not cancelled.")
+        );
 
         sportsBetting.handleFixtureCancelledPayoutTest(fixtureID);
     }
@@ -1814,7 +1841,10 @@ contract SportsBettingTestSuite is Test, HelperContract {
         SportsBetting.BettingState cancelledState = SportsBetting.BettingState.CANCELLED;
         sportsBetting.setFixtureBettingStateCheat(fixtureID, cancelledState);
 
-        vm.expectRevert("No stakes found on this fixture");
+        // Expect revert
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidPayoutAction.selector, fixtureID, cancelledState, 0, "No stakes found on this fixture.")
+        );
 
         // Addr1 has no stakes on this fixture
         vm.prank(addr1);
@@ -1948,7 +1978,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         SportsBetting.BettingState invalidState = SportsBetting.BettingState.CANCELLED;
         sportsBetting.setFixtureBettingStateCheat(fixtureID, invalidState);
 
-        vm.expectRevert("Fixture not payable");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidPayoutAction.selector, fixtureID, invalidState, 0, "Fixture not payable.")
+        );
 
         sportsBetting.handleCommissionPayoutTest(fixtureID);
     }
@@ -1965,7 +1997,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.setCommissionPaidCheat(fixtureID, true);
 
         // Expect revert
-        vm.expectRevert("Commission already paid.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidPayoutAction.selector, fixtureID, state, 0, "Commission already paid.")
+        );
 
         sportsBetting.handleCommissionPayoutTest(fixtureID);
     }
@@ -1983,7 +2017,9 @@ contract SportsBettingTestSuite is Test, HelperContract {
         sportsBetting.setFixtureResultCheat(fixtureID, invalidResult);
 
         // Expect revert
-        vm.expectRevert("Invalid fixture result.");
+        vm.expectRevert(
+            abi.encodeWithSelector(SportsBetting.InvalidPayoutAction.selector, fixtureID, state, invalidResult, "Invalid fixture result.")
+        );
 
         sportsBetting.handleCommissionPayoutTest(fixtureID);
     }
